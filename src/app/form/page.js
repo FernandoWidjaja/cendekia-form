@@ -28,13 +28,17 @@ export default function FormPage() {
     const fetchLessons = async () => {
         try {
             setIsLoadingLessons(true);
-            const response = await fetch("/api/lessons");
+            // Fetch only lessons that have active quizzes
+            const response = await fetch("/api/quiz/active");
             const result = await response.json();
 
             if (result.success) {
                 setLessons(result.data);
+                if (result.data.length === 0) {
+                    setLessonsError("Tidak ada pelatihan aktif saat ini");
+                }
             } else {
-                setLessonsError(result.message);
+                setLessonsError(result.message || "Gagal memuat pelatihan");
             }
         } catch (error) {
             setLessonsError("Gagal memuat daftar pelatihan");

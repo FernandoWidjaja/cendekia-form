@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getEmployeeData, validatePassword } from "@/lib/ehc-service";
+import { loginLimiter, getIP, checkRateLimit } from "@/lib/rate-limiter";
 
 /**
  * POST /api/auth/login
@@ -7,6 +8,21 @@ import { getEmployeeData, validatePassword } from "@/lib/ehc-service";
  */
 export async function POST(request) {
     try {
+        // Rate limiting check
+        const ip = getIP(request);
+        const rateLimit = await checkRateLimit(loginLimiter, ip);
+
+        if (!rateLimit.success) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    message: "Terlalu banyak percobaan login. Coba lagi dalam 1 menit.",
+                    retryAfter: Math.ceil((rateLimit.reset - Date.now()) / 1000)
+                },
+                { status: 429 }
+            );
+        }
+
         const body = await request.json();
         const { login, password } = body;
 

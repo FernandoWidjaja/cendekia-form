@@ -7,7 +7,10 @@ import styles from "./page.module.css";
 export default function FormPage() {
     const router = useRouter();
     const [siswaData, setSiswaData] = useState(null);
+    const [lessons, setLessons] = useState([]);
     const [selectedPelatihan, setSelectedPelatihan] = useState("");
+    const [isLoadingLessons, setIsLoadingLessons] = useState(true);
+    const [lessonsError, setLessonsError] = useState("");
 
     useEffect(() => {
         // Check if user is logged in
@@ -17,7 +20,28 @@ export default function FormPage() {
             return;
         }
         setSiswaData(JSON.parse(data));
+
+        // Fetch lessons
+        fetchLessons();
     }, [router]);
+
+    const fetchLessons = async () => {
+        try {
+            setIsLoadingLessons(true);
+            const response = await fetch("/api/lessons");
+            const result = await response.json();
+
+            if (result.success) {
+                setLessons(result.data);
+            } else {
+                setLessonsError(result.message);
+            }
+        } catch (error) {
+            setLessonsError("Gagal memuat daftar pelatihan");
+        } finally {
+            setIsLoadingLessons(false);
+        }
+    };
 
     const handleLogout = () => {
         sessionStorage.removeItem("siswaData");
@@ -81,24 +105,43 @@ export default function FormPage() {
                 <section className={styles.section}>
                     <h2>Pilih Pelatihan</h2>
                     <div className={styles.field}>
-                        <label>Nama Pelajaran (Hanya pelatihan aktif)</label>
-                        <select
-                            value={selectedPelatihan}
-                            onChange={(e) => setSelectedPelatihan(e.target.value)}
-                        >
-                            <option value="">-- Pilih Pelatihan --</option>
-                            <option value="coming_soon" disabled>
-                                (API Pelatihan Coming Soon)
-                            </option>
-                        </select>
+                        <label>Nama Pelajaran</label>
+                        {lessonsError ? (
+                            <p className={styles.error}>{lessonsError}</p>
+                        ) : (
+                            <select
+                                value={selectedPelatihan}
+                                onChange={(e) => setSelectedPelatihan(e.target.value)}
+                                disabled={isLoadingLessons}
+                            >
+                                <option value="">
+                                    {isLoadingLessons ? "Memuat..." : "-- Pilih Pelatihan --"}
+                                </option>
+                                {lessons.map((lesson, index) => (
+                                    <option key={index} value={lesson.nama}>
+                                        {lesson.nama}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
                     </div>
 
-                    <button className={styles.submitBtn} disabled>
+                    <button
+                        className={styles.submitBtn}
+                        disabled={!selectedPelatihan}
+                        onClick={() => {
+                            if (selectedPelatihan) {
+                                router.push(`/quiz/${encodeURIComponent(selectedPelatihan)}`);
+                            }
+                        }}
+                    >
                         Daftar &amp; Lanjut Kuis
                     </button>
-                    <p className={styles.note}>
-                        * Fitur pendaftaran akan diaktifkan setelah integrasi API pelatihan
-                    </p>
+                    {!selectedPelatihan && (
+                        <p className={styles.note}>
+                            * Pilih pelatihan untuk melanjutkan
+                        </p>
+                    )}
                 </section>
 
                 <button className={styles.logoutBtn} onClick={handleLogout}>

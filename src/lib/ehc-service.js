@@ -98,6 +98,7 @@ export async function getEmployeeData(loginEmail) {
             Login: career.Login || "",
             GradeCode: career.GradeCode || "",
             BranchName: career.BranchName || "",
+            EffectiveDate: career.EffectiveDate || "",  // From Career API for EvaluationYearSequence
         };
     } catch (error) {
         console.error("GetDataEHC Error:", error);

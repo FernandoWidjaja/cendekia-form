@@ -5,8 +5,8 @@ import { check, sleep } from 'k6';
 export let options = {
     stages: [
         { duration: '10s', target: 100 },  // Ramp up to 100 users
-        { duration: '20s', target: 300 },  // Ramp up to 300 users
-        { duration: '30s', target: 300 },  // Stay at 300 users
+        { duration: '20s', target: 400 },  // Ramp up to 400 users
+        { duration: '30s', target: 400 },  // Stay at 400 users
         { duration: '10s', target: 0 },    // Ramp down
     ],
     thresholds: {
@@ -16,7 +16,7 @@ export let options = {
 };
 
 // GANTI dengan URL Vercel Anda setelah deploy
-const BASE_URL = 'https://your-app.vercel.app';
+const BASE_URL = 'https://cendekia-form.vercel.app/';
 
 export default function () {
     // Test 1: Load login page

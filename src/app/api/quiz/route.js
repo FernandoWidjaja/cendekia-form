@@ -2,6 +2,21 @@ import { NextResponse } from "next/server";
 import { getQuiz } from "@/lib/quiz-store";
 
 /**
+ * Adjust date for timezone difference between server (UTC) and WIB (UTC+7)
+ */
+function adjustForTimezone(date) {
+    const now = new Date();
+    const serverOffset = now.getTimezoneOffset(); // in minutes
+    const wibOffset = -420; // UTC+7 = -420 minutes
+
+    if (serverOffset !== wibOffset) {
+        const diffMinutes = wibOffset - serverOffset;
+        return new Date(date.getTime() + diffMinutes * 60 * 1000);
+    }
+    return date;
+}
+
+/**
  * Check if quiz is currently active based on date range
  */
 function isQuizActive(quiz) {
@@ -9,9 +24,17 @@ function isQuizActive(quiz) {
     if (!quiz.startDate || !quiz.endDate) return false;
 
     const now = new Date();
-    const start = new Date(quiz.startDate);
-    const end = new Date(quiz.endDate);
+    let start = adjustForTimezone(new Date(quiz.startDate));
+    let end = adjustForTimezone(new Date(quiz.endDate));
     end.setHours(23, 59, 59); // Include the end date fully
+
+    console.log("Quiz active check:", {
+        serverTime: now.toISOString(),
+        startAdjusted: start.toISOString(),
+        endAdjusted: end.toISOString(),
+        nowGteStart: now >= start,
+        nowLteEnd: now <= end
+    });
 
     return now >= start && now <= end;
 }
@@ -37,8 +60,8 @@ export async function GET(request) {
     if (!isQuizActive(quiz)) {
         // Return info about when quiz will be available
         const now = new Date();
-        const start = new Date(quiz.startDate);
-        const end = new Date(quiz.endDate);
+        let start = adjustForTimezone(new Date(quiz.startDate));
+        let end = adjustForTimezone(new Date(quiz.endDate));
 
         let message;
         if (now < start) {

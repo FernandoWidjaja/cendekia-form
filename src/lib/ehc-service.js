@@ -40,70 +40,84 @@ const getMasterAuthHeader = () => {
 
 /**
  * Get employee data from EHC API
+ * Tries multiple companies (SISWA, SRNM, SASI) until a match is found
  * @param {string} loginEmail - Employee login email
  * @returns {Promise<object|null>} - Employee data or null if not found
  */
 export async function getEmployeeData(loginEmail) {
-    const payload = {
-        pyCompany: "SISWA",
-        ServiceCategory: "EMPLOYEE",
-        ServiceMode: "SINGLE",
-        Login: loginEmail.toUpperCase(),
-    };
+    // List of companies to try
+    const companies = ["SISWA", "SRNM", "SASI"];
 
-    try {
-        const response = await fetch(`${EHC_BASE_URL}/GetDataEHC`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: getDataAuthHeader(), // Use GetDataEHC credentials
-            },
-            body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-            console.error(`GetDataEHC FAILED - HTTP ${response.status}`);
-            console.error(`Check EHC_DATA_USERNAME and EHC_DATA_PASSWORD in .env.local`);
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (data.Status !== "Success" || !data.EmployeeList?.length) {
-            return null;
-        }
-
-        const employee = data.EmployeeList[0];
-        const career = employee.Career || {};
-
-        // Format date from YYYYMMDD to DD/MM/YYYY - using EffectiveDate from Career
-        const effectiveDate = career.EffectiveDate || "";
-        let formattedDate = "";
-        if (effectiveDate && effectiveDate.length === 8) {
-            formattedDate = `${effectiveDate.slice(6, 8)}/${effectiveDate.slice(4, 6)}/${effectiveDate.slice(0, 4)}`;
-        }
-
-        return {
-            NIS: career.NIK || "",
-            Nama: career.Name || "",
-            NamaWilayahStudi: career.RegionName || "",
-            NamaLokasiStudi: career.DetailBranchName || "",
-            NamaProgramPelatihan: career.DivisionName || "",
-            NamaPeminatanProgramPelatihan: career.DepartmentName || "",
-            TanggalMasukSiswa: formattedDate,  // Now uses Career.EffectiveDate
-            ProgramSiswa: career.EmpStatusCode || "",
-            Company: career.pyCompany || "",
-            NamaJabatan: career.PositionName || "",
-            StatusSiswa: career.CareerType || "",
-            Login: career.Login || "",
-            GradeCode: career.GradeCode || "",
-            BranchName: career.BranchName || "",
-            EffectiveDate: career.EffectiveDate || "",  // From Career API for EvaluationYearSequence
+    for (const pyCompany of companies) {
+        const payload = {
+            pyCompany: pyCompany,
+            ServiceCategory: "EMPLOYEE",
+            ServiceMode: "SINGLE",
+            Login: loginEmail.toUpperCase(),
         };
-    } catch (error) {
-        console.error("GetDataEHC Error:", error);
-        throw error;
+
+        try {
+            console.log(`Trying GetDataEHC with pyCompany: ${pyCompany}`);
+
+            const response = await fetch(`${EHC_BASE_URL}/GetDataEHC`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: getDataAuthHeader(),
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                console.error(`GetDataEHC FAILED for ${pyCompany} - HTTP ${response.status}`);
+                continue; // Try next company
+            }
+
+            const data = await response.json();
+
+            if (data.Status !== "Success" || !data.EmployeeList?.length) {
+                console.log(`No employee found in ${pyCompany}, trying next...`);
+                continue; // Try next company
+            }
+
+            // Found employee!
+            console.log(`Employee found in company: ${pyCompany}`);
+            const employee = data.EmployeeList[0];
+            const career = employee.Career || {};
+
+            // Format date from YYYYMMDD to DD/MM/YYYY - using EffectiveDate from Career
+            const effectiveDate = career.EffectiveDate || "";
+            let formattedDate = "";
+            if (effectiveDate && effectiveDate.length === 8) {
+                formattedDate = `${effectiveDate.slice(6, 8)}/${effectiveDate.slice(4, 6)}/${effectiveDate.slice(0, 4)}`;
+            }
+
+            return {
+                NIS: career.NIK || "",
+                Nama: career.Name || "",
+                NamaWilayahStudi: career.RegionName || "",
+                NamaLokasiStudi: career.DetailBranchName || "",
+                NamaProgramPelatihan: career.DivisionName || "",
+                NamaPeminatanProgramPelatihan: career.DepartmentName || "",
+                TanggalMasukSiswa: formattedDate,  // Now uses Career.EffectiveDate
+                ProgramSiswa: career.EmpStatusCode || "",
+                Company: career.pyCompany || pyCompany, // Use found company
+                NamaJabatan: career.PositionName || "",
+                StatusSiswa: career.CareerType || "",
+                Login: career.Login || "",
+                GradeCode: career.GradeCode || "",
+                BranchName: career.BranchName || "",
+                EffectiveDate: career.EffectiveDate || "",
+            };
+        } catch (error) {
+            console.error(`GetDataEHC Error for ${pyCompany}:`, error);
+            continue; // Try next company
+        }
     }
+
+    // No employee found in any company
+    console.log("Employee not found in any company (SISWA, SRNM, SASI)");
+    return null;
 }
 
 /**

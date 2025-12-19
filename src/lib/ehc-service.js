@@ -81,7 +81,19 @@ export async function getEmployeeData(loginEmail) {
                 continue; // Try next company
             }
 
-            const data = await response.json();
+            // Read as text first and sanitize control characters
+            const rawText = await response.text();
+            // Remove control characters (except standard whitespace) that break JSON parsing
+            const sanitizedText = rawText.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+            let data;
+            try {
+                data = JSON.parse(sanitizedText);
+            } catch (parseError) {
+                console.error(`JSON Parse Error for ${pyCompany}:`, parseError.message);
+                continue; // Try next company
+            }
+
             console.log(`Response Status field: ${data.Status}`);
             console.log(`EmployeeList length: ${data.EmployeeList?.length || 0}`);
 
@@ -94,6 +106,7 @@ export async function getEmployeeData(loginEmail) {
             console.log(`Employee found in company: ${pyCompany}`);
             const employee = data.EmployeeList[0];
             const career = employee.Career || {};
+            const person = employee.Person || {};
 
             // Format date from YYYYMMDD to DD/MM/YYYY - using EffectiveDate from Career
             const effectiveDate = career.EffectiveDate || "";
@@ -102,9 +115,13 @@ export async function getEmployeeData(loginEmail) {
                 formattedDate = `${effectiveDate.slice(6, 8)}/${effectiveDate.slice(4, 6)}/${effectiveDate.slice(0, 4)}`;
             }
 
+            // Log what we're returning for debugging
+            console.log(`Career.NIK: ${career.NIK}, Person.NIK: ${person.NIK}`);
+            console.log(`Career.Name: ${career.Name}, Person.Name: ${person.Name}`);
+
             return {
-                NIS: career.NIK || "",
-                Nama: career.Name || "",
+                NIS: career.NIK || person.NIK || "",  // Fallback to Person.NIK
+                Nama: career.Name || person.Name || "",  // Fallback to Person.Name
                 NamaWilayahStudi: career.RegionName || "",
                 NamaLokasiStudi: career.DetailBranchName || "",
                 NamaProgramPelatihan: career.DivisionName || "",
@@ -114,7 +131,7 @@ export async function getEmployeeData(loginEmail) {
                 Company: career.pyCompany || pyCompany, // Use found company
                 NamaJabatan: career.PositionName || "",
                 StatusSiswa: career.CareerType || "",
-                Login: career.Login || "",
+                Login: career.Login || person.Login || "",
                 GradeCode: career.GradeCode || "",
                 BranchName: career.BranchName || "",
                 EffectiveDate: career.EffectiveDate || "",

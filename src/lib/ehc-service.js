@@ -3,10 +3,10 @@
  * Supports SEPARATE credentials for each API
  */
 
-const EHC_BASE_URL = process.env.EHC_BASE_URL || "https://hcq.payrollq.id/prweb/api/EHC/v1";
-
-// Master SISWA API (different base URL)
-const MASTER_SISWA_URL = process.env.MASTER_SISWA_URL || "http://pegadev2.sinarmas.co.id/prweb/api/EHC/v01/MasterSISWA";
+// API URLs - each endpoint has its own full URL
+const EHC_GETDATA_URL = process.env.EHC_BASE_URL || "https://hcq.payrollq.id/prweb/api/EHC/v1/GetDataEHC";
+const EHC_VALPASS_URL = process.env.EHC_VALPASS_URL || "http://hcq.payrollq.id/prweb/api/EHC/v1/ValEmpPass";
+const MASTER_SISWA_URL = process.env.MASTER_SISWA_URL || "http://hcq.payrollq.id/prweb/api/EHC/v01/MasterSISWA";
 
 // Credentials for GetDataEHC API
 const EHC_DATA_USERNAME = process.env.EHC_DATA_USERNAME || "";
@@ -50,7 +50,7 @@ export async function getEmployeeData(loginEmail) {
 
     console.log("=== GetEmployeeData Start ===");
     console.log("Login:", loginEmail);
-    console.log("API URL:", EHC_BASE_URL);
+    console.log("API URL:", EHC_GETDATA_URL);
     console.log("Credentials set:", !!EHC_DATA_USERNAME && !!EHC_DATA_PASSWORD);
 
     for (const pyCompany of companies) {
@@ -65,7 +65,7 @@ export async function getEmployeeData(loginEmail) {
             console.log(`\nTrying GetDataEHC with pyCompany: ${pyCompany}`);
             console.log("Payload:", JSON.stringify(payload));
 
-            const response = await fetch(`${EHC_BASE_URL}/GetDataEHC`, {
+            const response = await fetch(EHC_GETDATA_URL, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -143,7 +143,7 @@ export async function validatePassword(login, password) {
     };
 
     try {
-        const response = await fetch(`${EHC_BASE_URL}/ValEmpPass`, {
+        const response = await fetch(EHC_VALPASS_URL, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -220,4 +220,3 @@ export async function getMasterLessons() {
         throw error;
     }
 }
-

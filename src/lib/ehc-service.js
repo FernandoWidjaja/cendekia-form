@@ -76,11 +76,11 @@ export async function getEmployeeData(loginEmail) {
         const employee = data.EmployeeList[0];
         const career = employee.Career || {};
 
-        // Format date from YYYYMMDD to DD/MM/YYYY
-        const dateInGroup = career.DateInGroup || "";
+        // Format date from YYYYMMDD to DD/MM/YYYY - using EffectiveDate from Career
+        const effectiveDate = career.EffectiveDate || "";
         let formattedDate = "";
-        if (dateInGroup && dateInGroup.length === 8) {
-            formattedDate = `${dateInGroup.slice(6, 8)}/${dateInGroup.slice(4, 6)}/${dateInGroup.slice(0, 4)}`;
+        if (effectiveDate && effectiveDate.length === 8) {
+            formattedDate = `${effectiveDate.slice(6, 8)}/${effectiveDate.slice(4, 6)}/${effectiveDate.slice(0, 4)}`;
         }
 
         return {
@@ -90,7 +90,7 @@ export async function getEmployeeData(loginEmail) {
             NamaLokasiStudi: career.DetailBranchName || "",
             NamaProgramPelatihan: career.DivisionName || "",
             NamaPeminatanProgramPelatihan: career.DepartmentName || "",
-            TanggalMasukSiswa: formattedDate,
+            TanggalMasukSiswa: formattedDate,  // Now uses Career.EffectiveDate
             ProgramSiswa: career.EmpStatusCode || "",
             Company: career.pyCompany || "",
             NamaJabatan: career.PositionName || "",

@@ -9,9 +9,11 @@ export async function GET() {
     try {
         const quizzes = await getAllQuizzes();
         const now = new Date();
+        const nowTimestamp = now.getTime();
 
         console.log("=== Quiz Active Check ===");
-        console.log("Current time:", now.toISOString());
+        console.log("Server time:", now.toISOString());
+        console.log("Server timezone offset (minutes):", now.getTimezoneOffset());
         console.log("Total quizzes:", quizzes.length);
 
         // Filter only active quizzes (within date range)
@@ -30,14 +32,29 @@ export async function GET() {
                 return false;
             }
 
-            const start = new Date(quiz.startDate);
-            const end = new Date(quiz.endDate);
+            // Parse dates - the dates from admin are in format "YYYY-MM-DDTHH:mm" (local time)
+            // Add timezone offset to treat them as local time
+            let start = new Date(quiz.startDate);
+            let end = new Date(quiz.endDate);
 
-            console.log(`  Start parsed: ${start.toISOString()}`);
-            console.log(`  End parsed: ${end.toISOString()}`);
+            // If stored as simple datetime without timezone, assume it's UTC+7 (WIB)
+            // and adjust for server timezone differences
+            const serverOffset = now.getTimezoneOffset(); // in minutes (negative for UTC+)
+            const wibOffset = -420; // UTC+7 = -420 minutes
 
-            const isWithin = now >= start && now <= end;
-            console.log(`  now >= start: ${now >= start}, now <= end: ${now <= end}`);
+            // If there's a mismatch, adjust the parsed dates
+            if (serverOffset !== wibOffset) {
+                const diffMinutes = wibOffset - serverOffset;
+                start = new Date(start.getTime() + diffMinutes * 60 * 1000);
+                end = new Date(end.getTime() + diffMinutes * 60 * 1000);
+                console.log(`  Adjusted for timezone (diff ${diffMinutes} min)`);
+            }
+
+            console.log(`  Start (adjusted): ${start.toISOString()}`);
+            console.log(`  End (adjusted): ${end.toISOString()}`);
+
+            const isWithin = nowTimestamp >= start.getTime() && nowTimestamp <= end.getTime();
+            console.log(`  now >= start: ${nowTimestamp >= start.getTime()}, now <= end: ${nowTimestamp <= end.getTime()}`);
             console.log(`  RESULT: ${isWithin ? "ACTIVE" : "NOT ACTIVE"}`);
 
             return isWithin;

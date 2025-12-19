@@ -83,8 +83,9 @@ export async function getEmployeeData(loginEmail) {
 
             // Read as text first and sanitize control characters
             const rawText = await response.text();
-            // Remove control characters (except standard whitespace) that break JSON parsing
-            const sanitizedText = rawText.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+            // Replace ALL control characters (0x00-0x1F and 0x7F) with space - including newlines/tabs
+            // This is needed because EHC API sometimes returns unescaped control chars in JSON strings
+            const sanitizedText = rawText.replace(/[\x00-\x1F\x7F]/g, ' ');
 
             let data;
             try {

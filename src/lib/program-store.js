@@ -163,19 +163,21 @@ export async function saveScoreDetail(scoreData) {
 }
 
 /**
- * Get all ScoreDetails
+ * Get all ScoreDetails - optimized with parallel fetching
  */
 export async function getAllScoreDetails() {
     try {
         const keys = await redis.get("scoredetail:keys") || [];
-        const details = [];
 
-        for (const key of keys) {
-            const data = await redis.get(key);
-            if (data) details.push(data);
-        }
+        if (keys.length === 0) return [];
 
-        return details;
+        // Fetch all data in parallel for better performance
+        const results = await Promise.all(
+            keys.map(key => redis.get(key))
+        );
+
+        // Filter out null values (deleted keys)
+        return results.filter(data => data !== null);
     } catch (error) {
         console.error("getAllScoreDetails error:", error);
         return [];

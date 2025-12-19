@@ -109,7 +109,7 @@ export default function FormPage() {
                 </div>
 
                 <section className={styles.section}>
-                    <h2>Data Karyawan</h2>
+                    <h2>Data Siswa</h2>
                     <div className={styles.grid}>
                         <div className={styles.field}>
                             <label>NIS</label>

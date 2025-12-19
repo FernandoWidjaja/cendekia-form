@@ -54,6 +54,12 @@ export default function AdminPage() {
     const [scoreDetails, setScoreDetails] = useState([]);
     const [scorePage, setScorePage] = useState(1);
     const [selectedScores, setSelectedScores] = useState([]);
+    // Score Detail filter & sort
+    const [scoreFilterLogin, setScoreFilterLogin] = useState("");
+    const [scoreFilterLesson, setScoreFilterLesson] = useState("");
+    const [scoreFilterGrade, setScoreFilterGrade] = useState("");
+    const [scoreSortField, setScoreSortField] = useState("Date");
+    const [scoreSortAsc, setScoreSortAsc] = useState(false);
 
     // Items per page
     const ITEMS_PER_PAGE = 10;
@@ -305,6 +311,65 @@ export default function AdminPage() {
         }
         setSelectedScores([]);
         fetchScoreDetails();
+    };
+
+    // Helper function to filter and sort score details
+    const getFilteredSortedScores = () => {
+        let filtered = [...scoreDetails];
+
+        // Apply filters
+        if (scoreFilterLogin) {
+            filtered = filtered.filter(s =>
+                s.Login?.toLowerCase().includes(scoreFilterLogin.toLowerCase())
+            );
+        }
+        if (scoreFilterLesson) {
+            filtered = filtered.filter(s =>
+                s.Lesson?.toLowerCase().includes(scoreFilterLesson.toLowerCase())
+            );
+        }
+        if (scoreFilterGrade) {
+            filtered = filtered.filter(s => s.Grade === scoreFilterGrade);
+        }
+
+        // Apply sort
+        filtered.sort((a, b) => {
+            let valA, valB;
+            if (scoreSortField === "Score") {
+                valA = parseFloat(a.Score) || 0;
+                valB = parseFloat(b.Score) || 0;
+            } else if (scoreSortField === "Date") {
+                valA = new Date(a.Date + " " + (a.SubmitTime || "00:00")).getTime() || 0;
+                valB = new Date(b.Date + " " + (b.SubmitTime || "00:00")).getTime() || 0;
+            } else {
+                valA = a[scoreSortField] || "";
+                valB = b[scoreSortField] || "";
+            }
+
+            if (scoreSortAsc) {
+                return valA > valB ? 1 : valA < valB ? -1 : 0;
+            } else {
+                return valA < valB ? 1 : valA > valB ? -1 : 0;
+            }
+        });
+
+        return filtered;
+    };
+
+    const clearScoreFilters = () => {
+        setScoreFilterLogin("");
+        setScoreFilterLesson("");
+        setScoreFilterGrade("");
+        setScorePage(1);
+    };
+
+    const toggleScoreSort = (field) => {
+        if (scoreSortField === field) {
+            setScoreSortAsc(!scoreSortAsc);
+        } else {
+            setScoreSortField(field);
+            setScoreSortAsc(false);
+        }
     };
 
     // Quiz functions
@@ -721,10 +786,10 @@ export default function AdminPage() {
                     <div className={styles.content}>
                         <section className={styles.section}>
                             <div className={styles.sectionHeader}>
-                                <h2>Score Detail ({scoreDetails.length})</h2>
+                                <h2>Score Detail ({getFilteredSortedScores().length} dari {scoreDetails.length})</h2>
                                 <div className={styles.actionBtns}>
                                     <button onClick={() => {
-                                        const ws = XLSX.utils.json_to_sheet(scoreDetails);
+                                        const ws = XLSX.utils.json_to_sheet(getFilteredSortedScores());
                                         const wb = XLSX.utils.book_new();
                                         XLSX.utils.book_append_sheet(wb, ws, "ScoreDetails");
                                         XLSX.writeFile(wb, "score_details.xlsx");
@@ -732,19 +797,133 @@ export default function AdminPage() {
                                     {selectedScores.length > 0 && <button onClick={bulkDeleteScores} style={{ background: "#dc2626", color: "white", border: "none", padding: "8px 16px", borderRadius: "6px", cursor: "pointer" }}>Hapus {selectedScores.length} Terpilih</button>}
                                 </div>
                             </div>
-                            {scoreDetails.length === 0 ? <p>Belum ada data</p> : (
+
+                            {/* Filter Bar */}
+                            <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                                <div style={{ flex: "1", minWidth: "150px" }}>
+                                    <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "4px", color: "#6b7280" }}>Filter Login:</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Cari login..."
+                                        value={scoreFilterLogin}
+                                        onChange={(e) => { setScoreFilterLogin(e.target.value); setScorePage(1); }}
+                                        style={{ width: "100%", padding: "8px 12px", border: "2px solid #e5e7eb", borderRadius: "6px" }}
+                                    />
+                                </div>
+                                <div style={{ flex: "1", minWidth: "150px" }}>
+                                    <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "4px", color: "#6b7280" }}>Filter Lesson:</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Cari lesson..."
+                                        value={scoreFilterLesson}
+                                        onChange={(e) => { setScoreFilterLesson(e.target.value); setScorePage(1); }}
+                                        style={{ width: "100%", padding: "8px 12px", border: "2px solid #e5e7eb", borderRadius: "6px" }}
+                                    />
+                                </div>
+                                <div style={{ minWidth: "120px" }}>
+                                    <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "4px", color: "#6b7280" }}>Filter Grade:</label>
+                                    <select
+                                        value={scoreFilterGrade}
+                                        onChange={(e) => { setScoreFilterGrade(e.target.value); setScorePage(1); }}
+                                        style={{ width: "100%", padding: "8px 12px", border: "2px solid #e5e7eb", borderRadius: "6px" }}
+                                    >
+                                        <option value="">Semua</option>
+                                        <option value="A+">A+</option>
+                                        <option value="A">A</option>
+                                        <option value="B">B</option>
+                                        <option value="C">C</option>
+                                        <option value="D">D</option>
+                                        <option value="E">E</option>
+                                    </select>
+                                </div>
+                                {(scoreFilterLogin || scoreFilterLesson || scoreFilterGrade) && (
+                                    <button
+                                        onClick={clearScoreFilters}
+                                        style={{ padding: "8px 16px", background: "#6b7280", color: "white", border: "none", borderRadius: "6px", cursor: "pointer" }}
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Sort Buttons */}
+                            <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+                                <span style={{ color: "#6b7280", fontSize: "0.85rem", alignSelf: "center" }}>Sort:</span>
+                                <button
+                                    onClick={() => toggleScoreSort("Date")}
+                                    style={{
+                                        padding: "6px 12px",
+                                        background: scoreSortField === "Date" ? "#667eea" : "#e5e7eb",
+                                        color: scoreSortField === "Date" ? "white" : "#374151",
+                                        border: "none",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                        fontSize: "0.85rem"
+                                    }}
+                                >
+                                    Date {scoreSortField === "Date" ? (scoreSortAsc ? "↑" : "↓") : ""}
+                                </button>
+                                <button
+                                    onClick={() => toggleScoreSort("Score")}
+                                    style={{
+                                        padding: "6px 12px",
+                                        background: scoreSortField === "Score" ? "#667eea" : "#e5e7eb",
+                                        color: scoreSortField === "Score" ? "white" : "#374151",
+                                        border: "none",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                        fontSize: "0.85rem"
+                                    }}
+                                >
+                                    Score {scoreSortField === "Score" ? (scoreSortAsc ? "↑" : "↓") : ""}
+                                </button>
+                                <button
+                                    onClick={() => toggleScoreSort("Login")}
+                                    style={{
+                                        padding: "6px 12px",
+                                        background: scoreSortField === "Login" ? "#667eea" : "#e5e7eb",
+                                        color: scoreSortField === "Login" ? "white" : "#374151",
+                                        border: "none",
+                                        borderRadius: "6px",
+                                        cursor: "pointer",
+                                        fontSize: "0.85rem"
+                                    }}
+                                >
+                                    Login {scoreSortField === "Login" ? (scoreSortAsc ? "↑" : "↓") : ""}
+                                </button>
+                            </div>
+
+                            {getFilteredSortedScores().length === 0 ? <p>Belum ada data</p> : (
                                 <>
                                     <table className={styles.table}>
-                                        <thead><tr><th><input type="checkbox" checked={selectedScores.length === scoreDetails.length && scoreDetails.length > 0} onChange={(e) => setSelectedScores(e.target.checked ? scoreDetails.map(s => `${s.Login}|||${s.Lesson}`) : [])} /></th><th>Date</th><th>Time</th><th>Login</th><th>Lesson</th><th>Score</th><th>Program</th><th>Batch</th><th>Description</th><th>Aksi</th></tr></thead>
-                                        <tbody>{paginate(scoreDetails, scorePage).map((s, i) => (
-                                            <tr key={i}><td><input type="checkbox" checked={selectedScores.includes(`${s.Login}|||${s.Lesson}`)} onChange={(e) => setSelectedScores(e.target.checked ? [...selectedScores, `${s.Login}|||${s.Lesson}`] : selectedScores.filter(x => x !== `${s.Login}|||${s.Lesson}`))} /></td><td>{s.Date}</td><td>{s.SubmitTime}</td><td>{s.Login}</td><td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>{s.Lesson}</td><td>{s.Score}</td><td>{s.NamaProgram}</td><td>{s.Batch}</td><td>{s.Description}</td><td><button onClick={() => deleteScoreDetailHandler(s.Login, s.Lesson)}>Hapus</button></td></tr>
+                                        <thead><tr><th><input type="checkbox" checked={selectedScores.length === getFilteredSortedScores().length && getFilteredSortedScores().length > 0} onChange={(e) => setSelectedScores(e.target.checked ? getFilteredSortedScores().map(s => `${s.Login}|||${s.Lesson}`) : [])} /></th><th>Date</th><th>Time</th><th>Login</th><th>Lesson</th><th>Score</th><th>Grade</th><th>Program</th><th>Batch</th><th>Aksi</th></tr></thead>
+                                        <tbody>{paginate(getFilteredSortedScores(), scorePage).map((s, i) => (
+                                            <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb" }}>
+                                                <td><input type="checkbox" checked={selectedScores.includes(`${s.Login}|||${s.Lesson}`)} onChange={(e) => setSelectedScores(e.target.checked ? [...selectedScores, `${s.Login}|||${s.Lesson}`] : selectedScores.filter(x => x !== `${s.Login}|||${s.Lesson}`))} /></td>
+                                                <td>{s.Date}</td>
+                                                <td>{s.SubmitTime}</td>
+                                                <td style={{ maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis" }}>{s.Login}</td>
+                                                <td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }} title={s.Lesson}>{s.Lesson}</td>
+                                                <td><strong>{s.Score}</strong></td>
+                                                <td><span style={{
+                                                    padding: "2px 8px",
+                                                    borderRadius: "4px",
+                                                    fontSize: "0.8rem",
+                                                    fontWeight: "600",
+                                                    background: s.Grade === "A+" || s.Grade === "A" ? "#d1fae5" : s.Grade === "B" ? "#dbeafe" : s.Grade === "C" ? "#fef3c7" : "#fee2e2",
+                                                    color: s.Grade === "A+" || s.Grade === "A" ? "#047857" : s.Grade === "B" ? "#1d4ed8" : s.Grade === "C" ? "#b45309" : "#dc2626"
+                                                }}>{s.Grade || s.Description}</span></td>
+                                                <td>{s.NamaProgram}</td>
+                                                <td>{s.Batch}</td>
+                                                <td><button onClick={() => deleteScoreDetailHandler(s.Login, s.Lesson)}>Hapus</button></td>
+                                            </tr>
                                         ))}</tbody>
                                     </table>
-                                    {scoreDetails.length > ITEMS_PER_PAGE && (
+                                    {getFilteredSortedScores().length > ITEMS_PER_PAGE && (
                                         <div className={styles.pagination}>
                                             <button disabled={scorePage === 1} onClick={() => setScorePage(p => p - 1)}>« Prev</button>
-                                            <span>Halaman {scorePage} dari {getTotalPages(scoreDetails)}</span>
-                                            <button disabled={scorePage >= getTotalPages(scoreDetails)} onClick={() => setScorePage(p => p + 1)}>Next »</button>
+                                            <span>Halaman {scorePage} dari {getTotalPages(getFilteredSortedScores())}</span>
+                                            <button disabled={scorePage >= getTotalPages(getFilteredSortedScores())} onClick={() => setScorePage(p => p + 1)}>Next »</button>
                                         </div>
                                     )}
                                 </>

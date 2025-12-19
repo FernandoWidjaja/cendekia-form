@@ -53,7 +53,7 @@ export default function LoginPage() {
           <Image src="/Logo Cendekia.png" alt="Cendekia" width={200} height={80} style={{ objectFit: "contain" }} priority />
         </div>
         <div className={styles.header}>
-          <h1>Form Pelatihan Karyawan</h1>
+          <h1>Form Pelatihan Siswa</h1>
           <p>Silakan login dengan email dan password Anda</p>
         </div>
 

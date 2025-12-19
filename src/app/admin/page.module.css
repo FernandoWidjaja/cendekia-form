@@ -110,6 +110,12 @@
 .table th {
     background: #f7f7f7;
     font-weight: 600;
+    position: sticky;
+    top: 0;
+}
+
+.table tbody tr:hover {
+    background-color: #f5f3ff !important;
 }
 
 .table button {

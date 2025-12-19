@@ -48,6 +48,11 @@ export async function getEmployeeData(loginEmail) {
     // List of companies to try
     const companies = ["SISWA", "SRNM", "SASI"];
 
+    console.log("=== GetEmployeeData Start ===");
+    console.log("Login:", loginEmail);
+    console.log("API URL:", EHC_BASE_URL);
+    console.log("Credentials set:", !!EHC_DATA_USERNAME && !!EHC_DATA_PASSWORD);
+
     for (const pyCompany of companies) {
         const payload = {
             pyCompany: pyCompany,
@@ -57,7 +62,8 @@ export async function getEmployeeData(loginEmail) {
         };
 
         try {
-            console.log(`Trying GetDataEHC with pyCompany: ${pyCompany}`);
+            console.log(`\nTrying GetDataEHC with pyCompany: ${pyCompany}`);
+            console.log("Payload:", JSON.stringify(payload));
 
             const response = await fetch(`${EHC_BASE_URL}/GetDataEHC`, {
                 method: "POST",
@@ -68,12 +74,16 @@ export async function getEmployeeData(loginEmail) {
                 body: JSON.stringify(payload),
             });
 
+            console.log(`Response status: ${response.status}`);
+
             if (!response.ok) {
                 console.error(`GetDataEHC FAILED for ${pyCompany} - HTTP ${response.status}`);
                 continue; // Try next company
             }
 
             const data = await response.json();
+            console.log(`Response Status field: ${data.Status}`);
+            console.log(`EmployeeList length: ${data.EmployeeList?.length || 0}`);
 
             if (data.Status !== "Success" || !data.EmployeeList?.length) {
                 console.log(`No employee found in ${pyCompany}, trying next...`);

@@ -1,10 +1,35 @@
 import { NextResponse } from "next/server";
-import { getQuiz, calculateScore } from "@/lib/quiz-store";
+import { getQuiz, calculateScore, saveAttempt, getAttempt } from "@/lib/quiz-store";
+import { getProgramSiswaByLogin, saveScoreDetail } from "@/lib/program-store";
 
-// Master SISWA URL for submitting scores
-const MASTER_SISWA_URL = process.env.MASTER_SISWA_URL || "http://pegadev2.sinarmas.co.id/prweb/api/EHC/v01/MasterSISWA";
-const MASTER_SISWA_USERNAME = process.env.MASTER_SISWA_USERNAME || "";
-const MASTER_SISWA_PASSWORD = process.env.MASTER_SISWA_PASSWORD || "";
+/**
+ * Calculate EvaluationYearSequence from EffectiveDate
+ */
+function calculateEvaluationYear(effectiveDateStr) {
+    if (!effectiveDateStr) return "1";
+
+    try {
+        let effectiveDate;
+        if (effectiveDateStr.length === 8) {
+            const year = effectiveDateStr.slice(0, 4);
+            const month = effectiveDateStr.slice(4, 6);
+            const day = effectiveDateStr.slice(6, 8);
+            effectiveDate = new Date(`${year}-${month}-${day}`);
+        } else {
+            effectiveDate = new Date(effectiveDateStr);
+        }
+
+        const now = new Date();
+        const diffMs = now - effectiveDate;
+        const diffYears = diffMs / (1000 * 60 * 60 * 24 * 365);
+
+        if (diffYears < 1) return "1";
+        if (diffYears < 2) return "2";
+        return "3";
+    } catch {
+        return "1";
+    }
+}
 
 /**
  * POST /api/quiz/submit
@@ -23,6 +48,15 @@ export async function POST(request) {
             );
         }
 
+        // Check if already attempted
+        const existingAttempt = await getAttempt(login, lessonName);
+        if (existingAttempt) {
+            return NextResponse.json({
+                error: "Anda sudah mengerjakan quiz ini",
+                existingResult: existingAttempt,
+            }, { status: 403 });
+        }
+
         // Get quiz with correct answers
         const quiz = await getQuiz(lessonName);
         if (!quiz) {
@@ -32,47 +66,47 @@ export async function POST(request) {
         // Calculate score
         const result = calculateScore(quiz.questions, answers);
 
-        // Prepare score data for API
+        // Get program + batch from Master Program per Siswa
+        const programSiswa = await getProgramSiswaByLogin(login);
+        const namaProgram = programSiswa?.namaProgram || "UNKNOWN";
+        const batch = programSiswa?.batch || "";
+
+        // Calculate EvaluationYearSequence
+        const evalYear = calculateEvaluationYear(userData?.EffectiveDate);
+
+        // Format date as YYYYMMDD and time as HH:mm:ss
+        const now = new Date();
+        const dateStr = now.toISOString().split("T")[0].replace(/-/g, ""); // YYYYMMDD
+        const timeStr = now.toTimeString().split(" ")[0]; // HH:mm:ss
+
+        // Prepare ScoreDetail data (format untuk API nanti)
         const scoreData = {
-            Type: "ScoreDetail",
-            pyCompany: "SISWA",
             Login: login.toUpperCase(),
+            Batch: batch,
+            EvaluationYearSequence: evalYear,
+            NamaProgram: namaProgram,
+            Section: quiz.lessonData?.section || "KURIKULUM INDEPENDEN",
             Lesson: lessonName,
             Score: result.score.toString(),
-            Program: userData?.NamaProgramPelatihan || quiz.lessonData?.program || "ODP",
-            Section: quiz.lessonData?.section || "KURIKULUM INDEPENDEN",
-            SKS: quiz.lessonData?.sks || "1",
-            RangeScore: result.grade,
-            RangeKKM: result.grade,
-            Batch: "1",
+            Date: dateStr,
+            SubmitTime: timeStr,
             Description: result.gradeDesc,
         };
 
-        // Submit to external API
-        let apiSuccess = false;
-        let apiError = null;
+        console.log("ScoreDetail payload:", scoreData);
 
-        try {
-            const credentials = Buffer.from(`${MASTER_SISWA_USERNAME}:${MASTER_SISWA_PASSWORD}`).toString("base64");
+        // Save to Upstash (API disabled, simpan ke database dulu)
+        await saveScoreDetail(scoreData);
+        console.log("ScoreDetail saved to Upstash");
 
-            const apiRes = await fetch(MASTER_SISWA_URL, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Basic ${credentials}`,
-                },
-                body: JSON.stringify(scoreData),
-            });
-
-            if (apiRes.ok) {
-                apiSuccess = true;
-            } else {
-                apiError = `HTTP ${apiRes.status}`;
-            }
-        } catch (e) {
-            apiError = e.message;
-            console.error("Submit to API error:", e);
-        }
+        // Save attempt to database
+        await saveAttempt(login, lessonName, {
+            score: result.score,
+            grade: result.grade,
+            gradeDesc: result.gradeDesc,
+            correct: result.correct,
+            total: result.total,
+        });
 
         return NextResponse.json({
             success: true,
@@ -83,10 +117,7 @@ export async function POST(request) {
                 correct: result.correct,
                 total: result.total,
             },
-            apiSubmission: {
-                success: apiSuccess,
-                error: apiError,
-            },
+            savedToDatabase: true,
         });
     } catch (error) {
         console.error("Quiz submit error:", error);

@@ -18,6 +18,7 @@ export default function QuizPage() {
     const [timeLeft, setTimeLeft] = useState(0);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [result, setResult] = useState(null);
+    const [apiStatus, setApiStatus] = useState(null);
 
     // Get user data from sessionStorage
     const [userData, setUserData] = useState(null);
@@ -74,6 +75,10 @@ export default function QuizPage() {
             const data = await res.json();
             if (data.success) {
                 setResult(data.result);
+                setApiStatus(data.apiSubmission);
+            } else if (data.existingResult) {
+                setResult(data.existingResult);
+                setApiStatus({ success: true, message: "Sudah dikerjakan sebelumnya" });
             } else {
                 alert("Gagal submit: " + data.error);
             }
@@ -144,6 +149,15 @@ export default function QuizPage() {
                     <p className={styles.resultDetail}>
                         Benar: {result.correct} / {result.total}
                     </p>
+                    {apiStatus && (
+                        <div className={apiStatus.success ? styles.apiSuccess : styles.apiError}>
+                            {apiStatus.success ? (
+                                <>✓ Nilai berhasil dikirim ke sistem</>
+                            ) : (
+                                <>⚠ Gagal kirim ke sistem: {apiStatus.error}</>
+                            )}
+                        </div>
+                    )}
                     <button onClick={() => router.push("/form")}>Kembali ke Form</button>
                 </div>
             </main>

@@ -75,10 +75,10 @@ export async function deleteQuiz(lessonName) {
 }
 
 /**
- * Calculate score from answers
+ * Calculate score from answers with grade table (KURIKULUM INDEPENDEN)
  * @param {Array} questions - Quiz questions
  * @param {Array} answers - User answers (indexes)
- * @returns {Object} - { score, grade, gradeDesc }
+ * @returns {Object} - { score, rangeScore, weight, gradeDesc }
  */
 export function calculateScore(questions, answers) {
     let correct = 0;
@@ -91,27 +91,95 @@ export function calculateScore(questions, answers) {
 
     const score = Math.round((correct / questions.length) * 100);
 
-    // Grade based on KURIKULUM INDEPENDEN
-    let grade, gradeDesc;
+    // Grade table based on KURIKULUM INDEPENDEN
+    let rangeScore, weight, gradeDesc;
     if (score >= 90) {
-        grade = "A+";
+        rangeScore = "A+";
+        weight = 5;
         gradeDesc = "LULUS DENGAN MEMUASKAN";
     } else if (score >= 80) {
-        grade = "A";
+        rangeScore = "A";
+        weight = 4;
         gradeDesc = "LULUS DENGAN BAIK";
     } else if (score >= 70) {
-        grade = "B";
+        rangeScore = "B";
+        weight = 3;
         gradeDesc = "LULUS CUKUP BAIK";
     } else if (score >= 60) {
-        grade = "C";
+        rangeScore = "C";
+        weight = 2;
         gradeDesc = "LULUS";
     } else if (score >= 40) {
-        grade = "D";
+        rangeScore = "D";
+        weight = 1;
         gradeDesc = "TIDAK LULUS";
     } else {
-        grade = "E";
+        rangeScore = "E";
+        weight = 0;
         gradeDesc = "GAGAL";
     }
 
-    return { score, grade, gradeDesc, correct, total: questions.length };
+    return {
+        score,
+        rangeScore,
+        weight,
+        gradeDesc,
+        correct,
+        total: questions.length,
+        grade: rangeScore // backward compatibility
+    };
+}
+
+// ==================== QUIZ ATTEMPTS ====================
+
+/**
+ * Save quiz attempt for a user
+ */
+export async function saveAttempt(login, lessonName, result) {
+    try {
+        const key = `attempt:${login.toUpperCase()}:${lessonName}`;
+        const data = {
+            ...result,
+            completedAt: new Date().toISOString(),
+        };
+        await redis.set(key, data);
+        return { success: true };
+    } catch (error) {
+        console.error("saveAttempt error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Get quiz attempt for a user
+ */
+export async function getAttempt(login, lessonName) {
+    try {
+        const key = `attempt:${login.toUpperCase()}:${lessonName}`;
+        const attempt = await redis.get(key);
+        return attempt;
+    } catch (error) {
+        console.error("getAttempt error:", error);
+        return null;
+    }
+}
+
+/**
+ * Get multiple attempts for a user (all lessons)
+ */
+export async function getUserAttempts(login) {
+    try {
+        const keys = await redis.keys(`attempt:${login.toUpperCase()}:*`);
+        if (!keys.length) return {};
+
+        const attempts = {};
+        for (const key of keys) {
+            const lessonName = key.split(":").slice(2).join(":");
+            attempts[lessonName] = await redis.get(key);
+        }
+        return attempts;
+    } catch (error) {
+        console.error("getUserAttempts error:", error);
+        return {};
+    }
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import styles from "./page.module.css";
 
 export default function LoginPage() {
@@ -48,6 +49,9 @@ export default function LoginPage() {
   return (
     <main className={styles.main}>
       <div className={styles.container}>
+        <div className={styles.logoWrapper}>
+          <Image src="/Logo Cendekia.png" alt="Cendekia" width={200} height={80} style={{ objectFit: "contain" }} priority />
+        </div>
         <div className={styles.header}>
           <h1>Form Pelatihan Karyawan</h1>
           <p>Silakan login dengan email dan password Anda</p>

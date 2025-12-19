@@ -16,6 +16,12 @@
   padding: 40px;
 }
 
+.logoWrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
 .header {
   text-align: center;
   margin-bottom: 30px;
@@ -107,7 +113,7 @@
   .container {
     padding: 30px 20px;
   }
-  
+
   .header h1 {
     font-size: 1.3rem;
   }

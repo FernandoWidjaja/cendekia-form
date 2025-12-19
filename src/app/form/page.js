@@ -8,30 +8,30 @@ export default function FormPage() {
     const router = useRouter();
     const [siswaData, setSiswaData] = useState(null);
     const [lessons, setLessons] = useState([]);
-    const [selectedPelatihan, setSelectedPelatihan] = useState("");
     const [isLoadingLessons, setIsLoadingLessons] = useState(true);
     const [lessonsError, setLessonsError] = useState("");
+    const [programSiswa, setProgramSiswa] = useState(null);
+    const [programError, setProgramError] = useState("");
+    const [attempts, setAttempts] = useState({});
 
     useEffect(() => {
-        // Check if user is logged in
         const data = sessionStorage.getItem("siswaData");
         if (!data) {
             router.push("/");
             return;
         }
-        setSiswaData(JSON.parse(data));
-
-        // Fetch lessons
+        const parsed = JSON.parse(data);
+        setSiswaData(parsed);
         fetchLessons();
+        fetchProgramSiswa(parsed.Login);
+        fetchAttempts(parsed.Login);
     }, [router]);
 
     const fetchLessons = async () => {
         try {
             setIsLoadingLessons(true);
-            // Fetch only lessons that have active quizzes
             const response = await fetch("/api/quiz/active");
             const result = await response.json();
-
             if (result.success) {
                 setLessons(result.data);
                 if (result.data.length === 0) {
@@ -47,9 +47,49 @@ export default function FormPage() {
         }
     };
 
+    const fetchProgramSiswa = async (login) => {
+        if (!login) return;
+        try {
+            const response = await fetch(`/api/program-siswa?login=${encodeURIComponent(login)}`);
+            const result = await response.json();
+            if (result.success && result.data) {
+                setProgramSiswa(result.data.namaProgram);
+            } else {
+                setProgramError("Silahkan Hubungi Tim Cendekia untuk update Program Siswa");
+            }
+        } catch (error) {
+            setProgramError("Gagal memuat program siswa");
+        }
+    };
+
+    const fetchAttempts = async (login) => {
+        if (!login) return;
+        try {
+            const response = await fetch(`/api/quiz/attempts?login=${encodeURIComponent(login)}`);
+            const result = await response.json();
+            if (result.success) {
+                setAttempts(result.data);
+            }
+        } catch (error) {
+            console.error("Fetch attempts error:", error);
+        }
+    };
+
     const handleLogout = () => {
         sessionStorage.removeItem("siswaData");
         router.push("/");
+    };
+
+    const handleStartQuiz = (lessonName) => {
+        if (programError) {
+            alert("Silahkan Hubungi Tim Cendekia untuk update Program Siswa sebelum mengerjakan quiz");
+            return;
+        }
+        if (attempts[lessonName]) {
+            alert("Anda sudah mengerjakan quiz ini");
+            return;
+        }
+        router.push(`/quiz/${encodeURIComponent(lessonName)}`);
     };
 
     if (!siswaData) {
@@ -100,51 +140,56 @@ export default function FormPage() {
                             <input type="text" value={siswaData.TanggalMasukSiswa} disabled />
                         </div>
                         <div className={styles.field}>
-                            <label>Jabatan</label>
-                            <input type="text" value={siswaData.NamaJabatan} disabled />
+                            <label>Detail Program Siswa</label>
+                            {programError ? (
+                                <p className={styles.warning}>{programError}</p>
+                            ) : (
+                                <input type="text" value={programSiswa || "Memuat..."} disabled />
+                            )}
                         </div>
                     </div>
                 </section>
 
                 <section className={styles.section}>
-                    <h2>Pilih Pelatihan</h2>
-                    <div className={styles.field}>
-                        <label>Nama Pelajaran</label>
-                        {lessonsError ? (
-                            <p className={styles.error}>{lessonsError}</p>
-                        ) : (
-                            <select
-                                value={selectedPelatihan}
-                                onChange={(e) => setSelectedPelatihan(e.target.value)}
-                                disabled={isLoadingLessons}
-                            >
-                                <option value="">
-                                    {isLoadingLessons ? "Memuat..." : "-- Pilih Pelatihan --"}
-                                </option>
-                                {lessons.map((lesson, index) => (
-                                    <option key={index} value={lesson.nama}>
-                                        {lesson.nama}
-                                    </option>
-                                ))}
-                            </select>
-                        )}
-                    </div>
+                    <h2>Pelatihan Aktif</h2>
+                    {isLoadingLessons ? (
+                        <p className={styles.note}>Memuat pelatihan...</p>
+                    ) : lessonsError ? (
+                        <p className={styles.error}>{lessonsError}</p>
+                    ) : (
+                        <div className={styles.quizCards}>
+                            {lessons.map((lesson, index) => {
+                                const attempt = attempts[lesson.nama];
+                                const isCompleted = !!attempt;
 
-                    <button
-                        className={styles.submitBtn}
-                        disabled={!selectedPelatihan}
-                        onClick={() => {
-                            if (selectedPelatihan) {
-                                router.push(`/quiz/${encodeURIComponent(selectedPelatihan)}`);
-                            }
-                        }}
-                    >
-                        Daftar &amp; Lanjut Kuis
-                    </button>
-                    {!selectedPelatihan && (
-                        <p className={styles.note}>
-                            * Pilih pelatihan untuk melanjutkan
-                        </p>
+                                return (
+                                    <div key={index} className={`${styles.quizCard} ${isCompleted ? styles.completed : ""}`}>
+                                        <div className={styles.quizInfo}>
+                                            <h3>{lesson.nama}</h3>
+                                            <p className={styles.quizMeta}>
+                                                {lesson.questionCount} soal • {lesson.timerMinutes} menit
+                                            </p>
+                                        </div>
+                                        {isCompleted ? (
+                                            <div className={styles.quizResult}>
+                                                <span className={styles.completedBadge}>✓ Selesai</span>
+                                                <p className={styles.scoreText}>
+                                                    Nilai: <strong>{attempt.score}</strong> ({attempt.grade})
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                className={styles.startBtn}
+                                                onClick={() => handleStartQuiz(lesson.nama)}
+                                                disabled={!!programError}
+                                            >
+                                                Mulai Quiz
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
                     )}
                 </section>
 

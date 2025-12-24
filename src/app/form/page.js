@@ -58,6 +58,11 @@ export default function FormPage() {
 
     const fetchProgramSiswa = async (login) => {
         if (!login) return;
+        // Skip program siswa check for ASM users - they use Jabatan instead
+        if (siswaData?.Company === "ASM") {
+            setProgramSiswa(siswaData?.NamaJabatan || "-");
+            return;
+        }
         try {
             const response = await fetch(`/api/program-siswa?login=${encodeURIComponent(login)}`);
             const result = await response.json();

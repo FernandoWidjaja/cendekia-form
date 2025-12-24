@@ -22,16 +22,17 @@ export default function FormPage() {
         }
         const parsed = JSON.parse(data);
         setSiswaData(parsed);
-        fetchLessons();
-        fetchProgramSiswa(parsed.Login);
+        // Pass parsed data directly since state hasn't updated yet
+        fetchLessons(parsed);
+        fetchProgramSiswa(parsed);
         fetchAttempts(parsed.Login);
     }, [router]);
 
-    const fetchLessons = async () => {
+    const fetchLessons = async (userData) => {
         try {
             setIsLoadingLessons(true);
-            // Get user's company from session
-            const userCompany = siswaData?.Company || "";
+            // Get user's company from passed data (not state, as it may not be updated yet)
+            const userCompany = userData?.Company || "";
             const response = await fetch(`/api/quiz/active?company=${encodeURIComponent(userCompany)}`);
             const result = await response.json();
             if (result.success) {
@@ -56,11 +57,12 @@ export default function FormPage() {
         }
     };
 
-    const fetchProgramSiswa = async (login) => {
+    const fetchProgramSiswa = async (userData) => {
+        const login = userData?.Login;
         if (!login) return;
         // Skip program siswa check for ASM users - they use Jabatan instead
-        if (siswaData?.Company === "ASM") {
-            setProgramSiswa(siswaData?.NamaJabatan || "-");
+        if (userData?.Company === "ASM") {
+            setProgramSiswa(userData?.NamaJabatan || "-");
             return;
         }
         try {

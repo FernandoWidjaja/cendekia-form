@@ -30,11 +30,20 @@ export default function FormPage() {
     const fetchLessons = async () => {
         try {
             setIsLoadingLessons(true);
-            const response = await fetch("/api/quiz/active");
+            // Get user's company from session
+            const userCompany = siswaData?.Company || "";
+            const response = await fetch(`/api/quiz/active?company=${encodeURIComponent(userCompany)}`);
             const result = await response.json();
             if (result.success) {
-                setLessons(result.data);
-                if (result.data.length === 0) {
+                // Filter quizzes by company (if targetCompanies exists)
+                const filtered = result.data.filter(quiz => {
+                    // If no targetCompanies or empty, show to all (backward compat)
+                    if (!quiz.targetCompanies || quiz.targetCompanies.length === 0) return true;
+                    // Check if user's company is in targetCompanies
+                    return quiz.targetCompanies.includes(userCompany);
+                });
+                setLessons(filtered);
+                if (filtered.length === 0) {
                     setLessonsError("Tidak ada pelatihan aktif saat ini");
                 }
             } else {

@@ -31,6 +31,10 @@ export default function AdminPage() {
     const [editMode, setEditMode] = useState(false);
     const [quizPage, setQuizPage] = useState(1);
     const [selectedQuizzes, setSelectedQuizzes] = useState([]);
+    // New: Custom quiz name and target companies
+    const [useCustomName, setUseCustomName] = useState(false);
+    const [customQuizName, setCustomQuizName] = useState("");
+    const [targetCompanies, setTargetCompanies] = useState(["ASM", "SISWA", "SRNM", "SASI"]); // Default all
 
     // Master Program state
     const [programs, setPrograms] = useState([]);
@@ -459,14 +463,26 @@ export default function AdminPage() {
     const removeQuestion = (index) => setQuestions(questions.filter((_, i) => i !== index));
 
     const saveQuiz = async () => {
-        if (!selectedLesson || questions.length === 0) return alert("Pilih lesson dan tambah soal");
+        // Determine quiz name: custom or from lesson
+        const quizName = useCustomName ? customQuizName.trim() : selectedLesson?.nama;
+        if (!quizName || questions.length === 0) return alert(useCustomName ? "Isi nama quiz dan tambah soal" : "Pilih lesson dan tambah soal");
         if (!startDate || !endDate) return alert("Tanggal wajib diisi");
+        if (targetCompanies.length === 0) return alert("Pilih minimal satu target company");
         setIsLoading(true);
         try {
             const res = await fetch("/api/admin/quiz", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: authHeader },
-                body: JSON.stringify({ lessonName: selectedLesson.nama, lessonData: selectedLesson, timerMinutes, startDate, endDate, isActive: true, questions }),
+                body: JSON.stringify({
+                    lessonName: quizName,
+                    lessonData: useCustomName ? { nama: quizName, section: "CUSTOM" } : selectedLesson,
+                    timerMinutes,
+                    startDate,
+                    endDate,
+                    isActive: true,
+                    questions,
+                    targetCompanies
+                }),
             });
             const data = await res.json();
             if (data.success) { alert("Quiz disimpan!"); resetQuizForm(); fetchQuizzes(); }
@@ -486,11 +502,23 @@ export default function AdminPage() {
     };
 
     const editQuizHandler = (quiz) => {
-        setSelectedLesson({ nama: quiz.lessonName, ...quiz.lessonData });
+        // Check if custom name (section === CUSTOM)
+        const isCustom = quiz.lessonData?.section === "CUSTOM";
+        setUseCustomName(isCustom);
+        if (isCustom) {
+            setCustomQuizName(quiz.lessonName);
+            setSelectedLesson(null);
+            setLessonSearch("");
+        } else {
+            setSelectedLesson({ nama: quiz.lessonName, ...quiz.lessonData });
+            setLessonSearch(quiz.lessonName);
+            setCustomQuizName("");
+        }
         setTimerMinutes(quiz.timerMinutes);
         setStartDate(quiz.startDate || "");
         setEndDate(quiz.endDate || "");
         setQuestions(quiz.questions);
+        setTargetCompanies(quiz.targetCompanies || ["ASM", "SISWA", "SRNM", "SASI"]);
         setEditMode(true);
     };
 
@@ -501,6 +529,11 @@ export default function AdminPage() {
         setEndDate("");
         setQuestions([]);
         setEditMode(false);
+        setUseCustomName(false);
+        setCustomQuizName("");
+        setTargetCompanies(["ASM", "SISWA", "SRNM", "SASI"]);
+        setLessonSearch("");
+        setQuizUploadStatus(null);
     };
 
     // Master Program functions
@@ -746,23 +779,75 @@ export default function AdminPage() {
                         </section>
                         <section className={styles.section}>
                             <h2>{editMode ? "Edit Quiz" : "Buat Quiz Baru"}</h2>
-                            <div className={styles.formGroup} style={{ position: "relative" }}>
-                                <label>Cari & Pilih Lesson:</label>
-                                <input
-                                    placeholder="Ketik nama lesson..."
-                                    value={lessonSearch}
-                                    onChange={(e) => { setLessonSearch(e.target.value); setShowLessonDropdown(true); }}
-                                    onFocus={() => setShowLessonDropdown(true)}
-                                />
-                                {showLessonDropdown && filteredLessons.length > 0 && (
-                                    <div className={styles.searchResults}>
-                                        {filteredLessons.slice(0, 10).map((l, i) => (
-                                            <div key={i} className={styles.searchItem} onClick={() => handleLessonSelect(l)}>{l.nama}</div>
-                                        ))}
-                                    </div>
-                                )}
-                                {selectedLesson && <div style={{ marginTop: "8px", color: "#10b981" }}>✓ Selected: {selectedLesson.nama}</div>}
+
+                            {/* Mode Toggle: Lesson or Custom Name */}
+                            <div className={styles.formGroup} style={{ marginBottom: "16px" }}>
+                                <label style={{ marginBottom: "8px", display: "block" }}>Mode:</label>
+                                <div style={{ display: "flex", gap: "16px" }}>
+                                    <label style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+                                        <input type="radio" checked={!useCustomName} onChange={() => setUseCustomName(false)} />
+                                        Pilih dari Lesson
+                                    </label>
+                                    <label style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+                                        <input type="radio" checked={useCustomName} onChange={() => setUseCustomName(true)} />
+                                        Nama Custom
+                                    </label>
+                                </div>
                             </div>
+
+                            {/* Conditional: Lesson Dropdown OR Custom Name Input */}
+                            {!useCustomName ? (
+                                <div className={styles.formGroup} style={{ position: "relative" }}>
+                                    <label>Cari & Pilih Lesson:</label>
+                                    <input
+                                        placeholder="Ketik nama lesson..."
+                                        value={lessonSearch}
+                                        onChange={(e) => { setLessonSearch(e.target.value); setShowLessonDropdown(true); }}
+                                        onFocus={() => setShowLessonDropdown(true)}
+                                    />
+                                    {showLessonDropdown && filteredLessons.length > 0 && (
+                                        <div className={styles.searchResults}>
+                                            {filteredLessons.slice(0, 10).map((l, i) => (
+                                                <div key={i} className={styles.searchItem} onClick={() => handleLessonSelect(l)}>{l.nama}</div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {selectedLesson && <div style={{ marginTop: "8px", color: "#10b981" }}>✓ Selected: {selectedLesson.nama}</div>}
+                                </div>
+                            ) : (
+                                <div className={styles.formGroup}>
+                                    <label>Nama Quiz:</label>
+                                    <input
+                                        placeholder="Ketik nama quiz..."
+                                        value={customQuizName}
+                                        onChange={(e) => setCustomQuizName(e.target.value)}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Target Companies Checkboxes */}
+                            <div className={styles.formGroup} style={{ marginBottom: "16px" }}>
+                                <label style={{ marginBottom: "8px", display: "block" }}>Target Company:</label>
+                                <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                                    {["ASM", "SISWA", "SRNM", "SASI"].map(company => (
+                                        <label key={company} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={targetCompanies.includes(company)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setTargetCompanies([...targetCompanies, company]);
+                                                    } else {
+                                                        setTargetCompanies(targetCompanies.filter(c => c !== company));
+                                                    }
+                                                }}
+                                            />
+                                            {company}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
                             <div className={styles.formRow}><div className={styles.formGroup}><label>Timer (menit):</label><input type="number" value={timerMinutes} onChange={(e) => setTimerMinutes(parseInt(e.target.value) || 30)} min={1} /></div></div>
                             <div className={styles.formRow}><div className={styles.formGroup}><label>Mulai:</label><input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div><div className={styles.formGroup}><label>Selesai:</label><input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div></div>
                             <div className={styles.questions}><h3>Soal ({questions.length})</h3>{questions.map((q, i) => (<div key={i} className={styles.questionCard}><div className={styles.questionHeader}><span>Soal {i + 1}</span><button onClick={() => removeQuestion(i)}>×</button></div><input placeholder="Pertanyaan" value={q.question} onChange={(e) => updateQuestion(i, "question", e.target.value)} /><div className={styles.options}>{q.options.map((opt, j) => (<div key={j} className={styles.optionRow}><input type="radio" name={`correct-${i}`} checked={q.correctAnswer === j} onChange={() => updateQuestion(i, "correctAnswer", j)} /><input placeholder={`Opsi ${String.fromCharCode(65 + j)}`} value={opt} onChange={(e) => updateQuestion(i, `option${j}`, e.target.value)} /></div>))}</div></div>))}<button onClick={addQuestion} className={styles.addBtn}>+ Tambah Soal</button></div>

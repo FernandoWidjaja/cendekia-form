@@ -45,8 +45,8 @@ const getMasterAuthHeader = () => {
  * @returns {Promise<object|null>} - Employee data or null if not found
  */
 export async function getEmployeeData(loginEmail) {
-    // List of companies to try
-    const companies = ["SISWA", "SRNM", "SASI"];
+    // List of companies to try (including ASM)
+    const companies = ["SISWA", "SRNM", "SASI", "ASM"];
 
     console.log("=== GetEmployeeData Start ===");
     console.log("Login:", loginEmail);

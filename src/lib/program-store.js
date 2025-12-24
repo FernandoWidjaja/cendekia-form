@@ -142,10 +142,14 @@ export async function bulkImportProgramSiswa(dataArray) {
 
 /**
  * Save ScoreDetail to Upstash
+ * @param {object} scoreData - Score data to save
+ * @param {boolean} isASM - If true, prefix key with 'asm:' for separate storage
  */
-export async function saveScoreDetail(scoreData) {
+export async function saveScoreDetail(scoreData, isASM = false) {
     try {
-        const key = `scoredetail:${scoreData.Login}:${scoreData.Lesson}`;
+        // ASM users get 'asm:' prefix for separate storage
+        const prefix = isASM ? "asm:" : "";
+        const key = `scoredetail:${prefix}${scoreData.Login}:${scoreData.Lesson}`;
         await redis.set(key, scoreData);
 
         // Also add to list for easy retrieval

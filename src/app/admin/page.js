@@ -58,8 +58,13 @@ export default function AdminPage() {
     const [scoreFilterLogin, setScoreFilterLogin] = useState("");
     const [scoreFilterLesson, setScoreFilterLesson] = useState("");
     const [scoreFilterGrade, setScoreFilterGrade] = useState("");
+    const [scoreFilterCompany, setScoreFilterCompany] = useState(""); // "", "ASM", "NON-ASM"
     const [scoreSortField, setScoreSortField] = useState("Date");
     const [scoreSortAsc, setScoreSortAsc] = useState(false);
+
+    // Quiz Excel upload
+    const quizExcelInputRef = useRef(null);
+    const [quizUploadStatus, setQuizUploadStatus] = useState(null);
 
     // Items per page
     const ITEMS_PER_PAGE = 10;
@@ -331,6 +336,12 @@ export default function AdminPage() {
         if (scoreFilterGrade) {
             filtered = filtered.filter(s => s.Grade === scoreFilterGrade);
         }
+        // Filter by company (ASM / NON-ASM)
+        if (scoreFilterCompany === "ASM") {
+            filtered = filtered.filter(s => s.Company === "ASM");
+        } else if (scoreFilterCompany === "NON-ASM") {
+            filtered = filtered.filter(s => s.Company !== "ASM");
+        }
 
         // Apply sort
         filtered.sort((a, b) => {
@@ -360,6 +371,7 @@ export default function AdminPage() {
         setScoreFilterLogin("");
         setScoreFilterLesson("");
         setScoreFilterGrade("");
+        setScoreFilterCompany("");
         setScorePage(1);
     };
 
@@ -370,6 +382,62 @@ export default function AdminPage() {
             setScoreSortField(field);
             setScoreSortAsc(false);
         }
+    };
+
+    // Quiz Excel Upload Handler
+    const handleQuizExcelUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setQuizUploadStatus({ loading: true });
+
+        try {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const wb = XLSX.read(evt.target.result, { type: "binary" });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const data = XLSX.utils.sheet_to_json(ws);
+
+                    // Convert Excel rows to questions format
+                    const newQuestions = data.map(row => {
+                        // Get correct answer index (A=0, B=1, C=2, D=3)
+                        const correctLetter = (row.Correct_Answer || row.CorrectAnswer || "A").toUpperCase();
+                        const correctIndex = { "A": 0, "B": 1, "C": 2, "D": 3 }[correctLetter] || 0;
+
+                        return {
+                            question: row.Question || row.question || "",
+                            options: [
+                                row.Option_A || row.OptionA || "",
+                                row.Option_B || row.OptionB || "",
+                                row.Option_C || row.OptionC || "",
+                                row.Option_D || row.OptionD || "",
+                            ],
+                            correctAnswer: correctIndex,
+                        };
+                    }).filter(q => q.question); // Remove empty questions
+
+                    setQuestions(newQuestions);
+                    setQuizUploadStatus({ success: true, imported: newQuestions.length });
+                } catch (err) {
+                    setQuizUploadStatus({ success: false, error: err.message });
+                }
+            };
+            reader.readAsBinaryString(file);
+        } catch (err) {
+            setQuizUploadStatus({ success: false, error: err.message });
+        }
+        e.target.value = "";
+    };
+
+    const downloadQuizTemplate = () => {
+        const template = [
+            { No: 1, Question: "Apa itu Safety?", Option_A: "Jawaban A", Option_B: "Jawaban B", Option_C: "Jawaban C", Option_D: "Jawaban D", Correct_Answer: "A" },
+            { No: 2, Question: "Kapan inspeksi dilakukan?", Option_A: "Jawaban A", Option_B: "Jawaban B", Option_C: "Jawaban C", Option_D: "Jawaban D", Correct_Answer: "C" },
+        ];
+        const ws = XLSX.utils.json_to_sheet(template);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Template");
+        XLSX.writeFile(wb, "template_quiz_soal.xlsx");
     };
 
     // Quiz functions
@@ -698,6 +766,22 @@ export default function AdminPage() {
                             <div className={styles.formRow}><div className={styles.formGroup}><label>Timer (menit):</label><input type="number" value={timerMinutes} onChange={(e) => setTimerMinutes(parseInt(e.target.value) || 30)} min={1} /></div></div>
                             <div className={styles.formRow}><div className={styles.formGroup}><label>Mulai:</label><input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div><div className={styles.formGroup}><label>Selesai:</label><input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div></div>
                             <div className={styles.questions}><h3>Soal ({questions.length})</h3>{questions.map((q, i) => (<div key={i} className={styles.questionCard}><div className={styles.questionHeader}><span>Soal {i + 1}</span><button onClick={() => removeQuestion(i)}>×</button></div><input placeholder="Pertanyaan" value={q.question} onChange={(e) => updateQuestion(i, "question", e.target.value)} /><div className={styles.options}>{q.options.map((opt, j) => (<div key={j} className={styles.optionRow}><input type="radio" name={`correct-${i}`} checked={q.correctAnswer === j} onChange={() => updateQuestion(i, "correctAnswer", j)} /><input placeholder={`Opsi ${String.fromCharCode(65 + j)}`} value={opt} onChange={(e) => updateQuestion(i, `option${j}`, e.target.value)} /></div>))}</div></div>))}<button onClick={addQuestion} className={styles.addBtn}>+ Tambah Soal</button></div>
+
+                            {/* Excel Upload for Quiz Questions */}
+                            <div className={styles.formGroup} style={{ marginTop: "20px", padding: "16px", background: "#f0f9ff", borderRadius: "8px", border: "2px dashed #667eea" }}>
+                                <label style={{ fontWeight: 600, color: "#374151" }}>Upload Soal dari Excel:</label>
+                                <div className={styles.formRow} style={{ marginTop: "8px" }}>
+                                    <input type="file" accept=".xlsx,.xls" ref={quizExcelInputRef} onChange={handleQuizExcelUpload} style={{ flex: 1 }} />
+                                    <button onClick={downloadQuizTemplate} className={styles.addBtn}>Download Template</button>
+                                </div>
+                                {quizUploadStatus && quizUploadStatus.loading && <div style={{ color: "#667eea", marginTop: "8px" }}>Memproses...</div>}
+                                {quizUploadStatus && !quizUploadStatus.loading && (
+                                    <div style={{ marginTop: "8px", color: quizUploadStatus.success ? "#10b981" : "#dc2626" }}>
+                                        {quizUploadStatus.success ? `✓ Berhasil import ${quizUploadStatus.imported} soal` : `✗ Error: ${quizUploadStatus.error}`}
+                                    </div>
+                                )}
+                            </div>
+
                             <div className={styles.formActions}><button onClick={saveQuiz} className={styles.saveBtn} disabled={isLoading}>{isLoading ? "Menyimpan..." : "Simpan Quiz"}</button>{editMode && <button onClick={resetQuizForm} className={styles.cancelBtn}>Batal</button>}</div>
                         </section>
                     </div>
@@ -836,7 +920,19 @@ export default function AdminPage() {
                                         <option value="E">E</option>
                                     </select>
                                 </div>
-                                {(scoreFilterLogin || scoreFilterLesson || scoreFilterGrade) && (
+                                <div style={{ minWidth: "120px" }}>
+                                    <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "4px", color: "#6b7280" }}>Company:</label>
+                                    <select
+                                        value={scoreFilterCompany}
+                                        onChange={(e) => { setScoreFilterCompany(e.target.value); setScorePage(1); }}
+                                        style={{ width: "100%", padding: "8px 12px", border: "2px solid #e5e7eb", borderRadius: "6px" }}
+                                    >
+                                        <option value="">Semua</option>
+                                        <option value="ASM">ASM</option>
+                                        <option value="NON-ASM">Non-ASM</option>
+                                    </select>
+                                </div>
+                                {(scoreFilterLogin || scoreFilterLesson || scoreFilterGrade || scoreFilterCompany) && (
                                     <button
                                         onClick={clearScoreFilters}
                                         style={{ padding: "8px 16px", background: "#6b7280", color: "white", border: "none", borderRadius: "6px", cursor: "pointer" }}

@@ -109,10 +109,10 @@ export default function FormPage() {
                 </div>
 
                 <section className={styles.section}>
-                    <h2>Data Siswa</h2>
+                    <h2>{siswaData.Company === "ASM" ? "Data Karyawan ASM" : "Data Siswa"}</h2>
                     <div className={styles.grid}>
                         <div className={styles.field}>
-                            <label>NIS</label>
+                            <label>{siswaData.Company === "ASM" ? "NIK" : "NIS"}</label>
                             <input type="text" value={siswaData.NIS} disabled />
                         </div>
                         <div className={styles.field}>
@@ -120,19 +120,19 @@ export default function FormPage() {
                             <input type="text" value={siswaData.Nama} disabled />
                         </div>
                         <div className={styles.field}>
-                            <label>Wilayah Studi</label>
+                            <label>{siswaData.Company === "ASM" ? "Wilayah" : "Wilayah Studi"}</label>
                             <input type="text" value={siswaData.NamaWilayahStudi} disabled />
                         </div>
                         <div className={styles.field}>
-                            <label>Lokasi Studi</label>
+                            <label>{siswaData.Company === "ASM" ? "Cabang" : "Lokasi Studi"}</label>
                             <input type="text" value={siswaData.NamaLokasiStudi} disabled />
                         </div>
                         <div className={styles.field}>
-                            <label>Program</label>
+                            <label>{siswaData.Company === "ASM" ? "Divisi" : "Program"}</label>
                             <input type="text" value={siswaData.NamaProgramPelatihan} disabled />
                         </div>
                         <div className={styles.field}>
-                            <label>Peminatan</label>
+                            <label>{siswaData.Company === "ASM" ? "Departemen" : "Peminatan"}</label>
                             <input type="text" value={siswaData.NamaPeminatanProgramPelatihan} disabled />
                         </div>
                         <div className={styles.field}>
@@ -140,8 +140,10 @@ export default function FormPage() {
                             <input type="text" value={siswaData.TanggalMasukSiswa} disabled />
                         </div>
                         <div className={styles.field}>
-                            <label>Detail Program Siswa</label>
-                            {programError ? (
+                            <label>{siswaData.Company === "ASM" ? "Jabatan" : "Detail Program Siswa"}</label>
+                            {siswaData.Company === "ASM" ? (
+                                <input type="text" value={siswaData.NamaJabatan || "-"} disabled />
+                            ) : programError ? (
                                 <p className={styles.warning}>{programError}</p>
                             ) : (
                                 <input type="text" value={programSiswa || "Memuat..."} disabled />

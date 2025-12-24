@@ -74,6 +74,9 @@ export async function POST(request) {
         // Calculate EvaluationYearSequence
         const evalYear = calculateEvaluationYear(userData?.EffectiveDate);
 
+        // Check if user is from ASM company
+        const isASM = userData?.Company === "ASM";
+
         // Format date as YYYYMMDD and time as HH:mm:ss
         const now = new Date();
         const dateStr = now.toISOString().split("T")[0].replace(/-/g, ""); // YYYYMMDD
@@ -88,16 +91,18 @@ export async function POST(request) {
             Section: quiz.lessonData?.section || "KURIKULUM INDEPENDEN",
             Lesson: lessonName,
             Score: result.score.toString(),
+            Grade: result.grade,
             Date: dateStr,
             SubmitTime: timeStr,
             Description: result.gradeDesc,
+            Company: userData?.Company || "",
         };
 
         console.log("ScoreDetail payload:", scoreData);
 
-        // Save to Upstash (API disabled, simpan ke database dulu)
-        await saveScoreDetail(scoreData);
-        console.log("ScoreDetail saved to Upstash");
+        // Save to Upstash (with ASM prefix if applicable)
+        await saveScoreDetail(scoreData, isASM);
+        console.log("ScoreDetail saved to Upstash", isASM ? "(ASM)" : "");
 
         // Save attempt to database
         await saveAttempt(login, lessonName, {

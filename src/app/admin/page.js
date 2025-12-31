@@ -459,6 +459,92 @@ export default function AdminPage() {
         XLSX.writeFile(wb, "template_quiz_soal.xlsx");
     };
 
+    // Mitra functions
+    const handleMitraExcelUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const reader = new FileReader();
+            reader.onload = async (evt) => {
+                try {
+                    const wb = XLSX.read(evt.target.result, { type: "binary" });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const data = XLSX.utils.sheet_to_json(ws);
+
+                    // Map Excel rows to mitra format
+                    const mitraData = data.map(row => ({
+                        login: row.Login || row.login || "",
+                        nama: row.Nama || row.nama || "",
+                        cabang: row.Cabang || row.cabang || "",
+                        divisi: row.Divisi || row.divisi || "",
+                        departemen: row.Departemen || row.departemen || "",
+                        namaAtasan: row.NamaAtasan || row.Nama_Atasan || row.namaAtasan || "",
+                    })).filter(m => m.login);
+
+                    const res = await fetch("/api/admin/mitra", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: authHeader },
+                        body: JSON.stringify({ bulk: mitraData }),
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                        alert(`Berhasil import ${result.saved} mitra`);
+                        fetchMitra();
+                    } else {
+                        alert("Gagal import: " + result.error);
+                    }
+                } catch (err) {
+                    alert("Error: " + err.message);
+                }
+            };
+            reader.readAsBinaryString(file);
+        } catch (err) {
+            alert("Error: " + err.message);
+        }
+        e.target.value = "";
+    };
+
+    const downloadMitraTemplate = () => {
+        const template = [
+            { Login: "user1@email.com", Nama: "John Doe", Cabang: "Jakarta", Divisi: "IT", Departemen: "Development", NamaAtasan: "Jane Smith" },
+            { Login: "user2@email.com", Nama: "Alice Bob", Cabang: "Surabaya", Divisi: "HR", Departemen: "Recruitment", NamaAtasan: "Charlie Brown" },
+        ];
+        const ws = XLSX.utils.json_to_sheet(template);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "MitraTemplate");
+        XLSX.writeFile(wb, "template_mitra.xlsx");
+    };
+
+    const deleteMitraHandler = async (login) => {
+        if (!confirm(`Hapus mitra ${login}?`)) return;
+        const res = await fetch("/api/admin/mitra", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json", Authorization: authHeader },
+            body: JSON.stringify({ login }),
+        });
+        if ((await res.json()).success) { alert("Dihapus!"); fetchMitra(); }
+    };
+
+    const bulkDeleteMitra = async () => {
+        if (!confirm(`Hapus ${selectedMitra.length} mitra terpilih?`)) return;
+        for (const login of selectedMitra) {
+            await fetch("/api/admin/mitra", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json", Authorization: authHeader },
+                body: JSON.stringify({ login }),
+            });
+        }
+        setSelectedMitra([]);
+        fetchMitra();
+    };
+
+    const exportMitra = () => {
+        const ws = XLSX.utils.json_to_sheet(mitraList);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Mitra");
+        XLSX.writeFile(wb, "mitra_list.xlsx");
+    };
+
     // Quiz functions
     const addQuestion = () => {
         setQuestions([...questions, { question: "", options: ["", "", "", ""], correctAnswer: 0 }]);
@@ -761,6 +847,7 @@ export default function AdminPage() {
                     <button className={activeTab === "program" ? styles.tabActive : styles.tab} onClick={() => setActiveTab("program")}>Master Program</button>
                     <button className={activeTab === "siswa" ? styles.tabActive : styles.tab} onClick={() => setActiveTab("siswa")}>Program Siswa</button>
                     <button className={activeTab === "scores" ? styles.tabActive : styles.tab} onClick={() => setActiveTab("scores")}>Score Detail</button>
+                    <button className={activeTab === "mitra" ? styles.tabActive : styles.tab} onClick={() => setActiveTab("mitra")}>Master Mitra</button>
                 </div>
 
                 {activeTab === "quiz" && (
@@ -1122,6 +1209,42 @@ export default function AdminPage() {
                                             <button disabled={scorePage >= getTotalPages(getFilteredSortedScores())} onClick={() => setScorePage(p => p + 1)}>Next »</button>
                                         </div>
                                     )}
+                                </>
+                            )}
+                        </section>
+                    </div>
+                )}
+
+                {activeTab === "mitra" && (
+                    <div className={styles.content}>
+                        <section className={styles.section}>
+                            <div className={styles.sectionHeader}>
+                                <h2>Master Mitra Kerja ({mitraList.length})</h2>
+                                <div className={styles.actionBtns}>
+                                    <button onClick={exportMitra} className={styles.addBtn}>Export Excel</button>
+                                    {selectedMitra.length > 0 && <button onClick={bulkDeleteMitra} style={{ background: "#dc2626", color: "white", border: "none", padding: "8px 16px", borderRadius: "6px", cursor: "pointer" }}>Hapus {selectedMitra.length} Terpilih</button>}
+                                </div>
+                            </div>
+                            <div className={styles.formGroup}>
+                                <label>Upload Excel (Login, Nama, Cabang, Divisi, Departemen, NamaAtasan):</label>
+                                <div className={styles.formRow}>
+                                    <input type="file" accept=".xlsx,.xls" ref={mitraFileRef} onChange={handleMitraExcelUpload} style={{ flex: 1 }} />
+                                    <button onClick={downloadMitraTemplate} className={styles.addBtn}>Download Template</button>
+                                </div>
+                            </div>
+                            {mitraList.length === 0 ? <p>Belum ada data mitra</p> : (
+                                <>
+                                    <table className={styles.table}>
+                                        <thead><tr><th><input type="checkbox" checked={selectedMitra.length === mitraList.length && mitraList.length > 0} onChange={(e) => setSelectedMitra(e.target.checked ? mitraList.map(m => m.Login) : [])} /></th><th>Login</th><th>Nama</th><th>Cabang</th><th>Divisi</th><th>Departemen</th><th>Nama Atasan</th><th>Aksi</th></tr></thead>
+                                        <tbody>{paginate(mitraList, mitraPage).map((m, i) => (
+                                            <tr key={i}><td><input type="checkbox" checked={selectedMitra.includes(m.Login)} onChange={(e) => setSelectedMitra(e.target.checked ? [...selectedMitra, m.Login] : selectedMitra.filter(x => x !== m.Login))} /></td><td>{m.Login}</td><td>{m.Nama}</td><td>{m.Cabang}</td><td>{m.Divisi}</td><td>{m.Departemen}</td><td>{m.NamaAtasan}</td><td><button onClick={() => deleteMitraHandler(m.Login)}>Hapus</button></td></tr>
+                                        ))}</tbody>
+                                    </table>
+                                    <div className={styles.pagination}>
+                                        <button disabled={mitraPage === 1} onClick={() => setMitraPage(p => p - 1)}>« Prev</button>
+                                        <span>Halaman {mitraPage} dari {getTotalPages(mitraList)}</span>
+                                        <button disabled={mitraPage >= getTotalPages(mitraList)} onClick={() => setMitraPage(p => p + 1)}>Next »</button>
+                                    </div>
                                 </>
                             )}
                         </section>

@@ -34,7 +34,7 @@ export default function AdminPage() {
     // New: Custom quiz name and target companies
     const [useCustomName, setUseCustomName] = useState(false);
     const [customQuizName, setCustomQuizName] = useState("");
-    const [targetCompanies, setTargetCompanies] = useState(["ASM", "SISWA", "SRNM", "SASI"]); // Default all
+    const [targetCompanies, setTargetCompanies] = useState(["ASM", "SISWA", "SRNM", "SASI", "MITRA"]); // Default all
 
     // Master Program state
     const [programs, setPrograms] = useState([]);
@@ -69,6 +69,12 @@ export default function AdminPage() {
     // Quiz Excel upload
     const quizExcelInputRef = useRef(null);
     const [quizUploadStatus, setQuizUploadStatus] = useState(null);
+
+    // Mitra state
+    const [mitraList, setMitraList] = useState([]);
+    const [mitraPage, setMitraPage] = useState(1);
+    const [selectedMitra, setSelectedMitra] = useState([]);
+    const mitraFileRef = useRef(null);
 
     // Items per page
     const ITEMS_PER_PAGE = 10;
@@ -212,6 +218,14 @@ export default function AdminPage() {
         } catch (e) { console.error(e); }
     };
 
+    const fetchMitra = async () => {
+        try {
+            const res = await fetch("/api/admin/mitra", { headers: { Authorization: authHeader } });
+            const data = await res.json();
+            if (data.success) setMitraList(data.data);
+        } catch (e) { console.error(e); }
+    };
+
     useEffect(() => {
         if (isLoggedIn) {
             fetchQuizzes();
@@ -219,6 +233,7 @@ export default function AdminPage() {
             fetchPrograms();
             fetchProgramSiswa();
             fetchScoreDetails();
+            fetchMitra();
         }
     }, [isLoggedIn]);
 
@@ -518,7 +533,7 @@ export default function AdminPage() {
         setStartDate(quiz.startDate || "");
         setEndDate(quiz.endDate || "");
         setQuestions(quiz.questions);
-        setTargetCompanies(quiz.targetCompanies || ["ASM", "SISWA", "SRNM", "SASI"]);
+        setTargetCompanies(quiz.targetCompanies || ["ASM", "SISWA", "SRNM", "SASI", "MITRA"]);
         setEditMode(true);
     };
 
@@ -531,7 +546,7 @@ export default function AdminPage() {
         setEditMode(false);
         setUseCustomName(false);
         setCustomQuizName("");
-        setTargetCompanies(["ASM", "SISWA", "SRNM", "SASI"]);
+        setTargetCompanies(["ASM", "SISWA", "SRNM", "SASI", "MITRA"]);
         setLessonSearch("");
         setQuizUploadStatus(null);
     };
@@ -829,7 +844,7 @@ export default function AdminPage() {
                             <div className={styles.formGroup} style={{ marginBottom: "16px" }}>
                                 <label style={{ marginBottom: "8px", display: "block" }}>Target Company:</label>
                                 <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                                    {["ASM", "SISWA", "SRNM", "SASI"].map(company => (
+                                    {["ASM", "SISWA", "SRNM", "SASI", "MITRA"].map(company => (
                                         <label key={company} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
                                             <input
                                                 type="checkbox"

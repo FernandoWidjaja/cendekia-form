@@ -60,8 +60,8 @@ export default function FormPage() {
     const fetchProgramSiswa = async (userData) => {
         const login = userData?.Login;
         if (!login) return;
-        // Skip program siswa check for ASM users - they use Jabatan instead
-        if (userData?.Company === "ASM") {
+        // Skip program siswa check for ASM and MITRA users
+        if (userData?.Company === "ASM" || userData?.Company === "MITRA") {
             setProgramSiswa(userData?.NamaJabatan || "-");
             return;
         }
@@ -125,10 +125,10 @@ export default function FormPage() {
                 </div>
 
                 <section className={styles.section}>
-                    <h2>{siswaData.Company === "ASM" ? "Data Karyawan ASM" : "Data Siswa"}</h2>
+                    <h2>{siswaData.Company === "MITRA" ? "Data Mitra Kerja" : siswaData.Company === "ASM" ? "Data Karyawan ASM" : "Data Siswa"}</h2>
                     <div className={styles.grid}>
                         <div className={styles.field}>
-                            <label>{siswaData.Company === "ASM" ? "NIK" : "NIS"}</label>
+                            <label>{siswaData.Company === "ASM" || siswaData.Company === "MITRA" ? "NIK" : "NIS"}</label>
                             <input type="text" value={siswaData.NIS} disabled />
                         </div>
                         <div className={styles.field}>
@@ -136,35 +136,41 @@ export default function FormPage() {
                             <input type="text" value={siswaData.Nama} disabled />
                         </div>
                         <div className={styles.field}>
-                            <label>{siswaData.Company === "ASM" ? "Wilayah" : "Wilayah Studi"}</label>
+                            <label>{siswaData.Company === "ASM" || siswaData.Company === "MITRA" ? "Wilayah" : "Wilayah Studi"}</label>
                             <input type="text" value={siswaData.NamaWilayahStudi} disabled />
                         </div>
                         <div className={styles.field}>
-                            <label>{siswaData.Company === "ASM" ? "Cabang" : "Lokasi Studi"}</label>
+                            <label>{siswaData.Company === "ASM" || siswaData.Company === "MITRA" ? "Cabang" : "Lokasi Studi"}</label>
                             <input type="text" value={siswaData.NamaLokasiStudi} disabled />
                         </div>
                         <div className={styles.field}>
-                            <label>{siswaData.Company === "ASM" ? "Divisi" : "Program"}</label>
+                            <label>{siswaData.Company === "ASM" || siswaData.Company === "MITRA" ? "Divisi" : "Program"}</label>
                             <input type="text" value={siswaData.NamaProgramPelatihan} disabled />
                         </div>
                         <div className={styles.field}>
-                            <label>{siswaData.Company === "ASM" ? "Departemen" : "Peminatan"}</label>
+                            <label>{siswaData.Company === "ASM" || siswaData.Company === "MITRA" ? "Departemen" : "Peminatan"}</label>
                             <input type="text" value={siswaData.NamaPeminatanProgramPelatihan} disabled />
                         </div>
-                        <div className={styles.field}>
-                            <label>Tanggal Masuk</label>
-                            <input type="text" value={siswaData.TanggalMasukSiswa} disabled />
-                        </div>
-                        <div className={styles.field}>
-                            <label>{siswaData.Company === "ASM" ? "Jabatan" : "Detail Program Siswa"}</label>
-                            {siswaData.Company === "ASM" ? (
-                                <input type="text" value={siswaData.NamaJabatan || "-"} disabled />
-                            ) : programError ? (
-                                <p className={styles.warning}>{programError}</p>
-                            ) : (
-                                <input type="text" value={programSiswa || "Memuat..."} disabled />
-                            )}
-                        </div>
+                        {/* Hide Tanggal Masuk for MITRA */}
+                        {siswaData.Company !== "MITRA" && (
+                            <div className={styles.field}>
+                                <label>Tanggal Masuk</label>
+                                <input type="text" value={siswaData.TanggalMasukSiswa} disabled />
+                            </div>
+                        )}
+                        {/* Hide Jabatan/Detail Program for MITRA */}
+                        {siswaData.Company !== "MITRA" && (
+                            <div className={styles.field}>
+                                <label>{siswaData.Company === "ASM" ? "Jabatan" : "Detail Program Siswa"}</label>
+                                {siswaData.Company === "ASM" ? (
+                                    <input type="text" value={siswaData.NamaJabatan || "-"} disabled />
+                                ) : programError ? (
+                                    <p className={styles.warning}>{programError}</p>
+                                ) : (
+                                    <input type="text" value={programSiswa || "Memuat..."} disabled />
+                                )}
+                            </div>
+                        )}
                     </div>
                 </section>
 

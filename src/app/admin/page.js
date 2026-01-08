@@ -76,6 +76,14 @@ export default function AdminPage() {
     const [selectedMitra, setSelectedMitra] = useState([]);
     const mitraFileRef = useRef(null);
 
+    // Pega Sync state
+    const [pegaLessons, setPegaLessons] = useState([]);
+    const [pegaSelectedLesson, setPegaSelectedLesson] = useState("");
+    const [pegaScores, setPegaScores] = useState([]);
+    const [pegaSelectedScores, setPegaSelectedScores] = useState([]);
+    const [pegaSyncResult, setPegaSyncResult] = useState(null);
+    const [pegaLoading, setPegaLoading] = useState(false);
+
     // Items per page
     const ITEMS_PER_PAGE = 10;
 
@@ -234,6 +242,7 @@ export default function AdminPage() {
             fetchProgramSiswa();
             fetchScoreDetails();
             fetchMitra();
+            fetchPegaLessons();
         }
     }, [isLoggedIn]);
 
@@ -545,6 +554,68 @@ export default function AdminPage() {
         XLSX.writeFile(wb, "mitra_list.xlsx");
     };
 
+    // Pega Sync functions
+    const fetchPegaLessons = async () => {
+        try {
+            const res = await fetch("/api/admin/pega-sync", { headers: { Authorization: authHeader } });
+            const data = await res.json();
+            if (data.success) {
+                setPegaLessons(data.lessons || []);
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    const fetchPegaScores = async (lesson) => {
+        if (!lesson) {
+            setPegaScores([]);
+            return;
+        }
+        try {
+            const res = await fetch(`/api/admin/pega-sync?lesson=${encodeURIComponent(lesson)}`, {
+                headers: { Authorization: authHeader }
+            });
+            const data = await res.json();
+            if (data.success) {
+                setPegaScores(data.data || []);
+                setPegaSelectedScores([]);
+                setPegaSyncResult(null);
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    const syncToPega = async () => {
+        if (pegaSelectedScores.length === 0) {
+            alert("Pilih minimal 1 data untuk dikirim");
+            return;
+        }
+
+        setPegaLoading(true);
+        setPegaSyncResult(null);
+
+        try {
+            const scoresToSend = pegaScores.filter((_, idx) => pegaSelectedScores.includes(idx));
+
+            const res = await fetch("/api/admin/pega-sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: authHeader },
+                body: JSON.stringify({ scores: scoresToSend }),
+            });
+
+            const data = await res.json();
+            setPegaSyncResult(data);
+
+            // Refresh scores to show updated sync status
+            if (pegaSelectedLesson) {
+                fetchPegaScores(pegaSelectedLesson);
+            }
+        } catch (e) {
+            console.error(e);
+            setPegaSyncResult({ error: e.message });
+        } finally {
+            setPegaLoading(false);
+        }
+    };
+
     // Quiz functions
     const addQuestion = () => {
         setQuestions([...questions, { question: "", options: ["", "", "", ""], correctAnswer: 0 }]);
@@ -848,6 +919,7 @@ export default function AdminPage() {
                     <button className={activeTab === "siswa" ? styles.tabActive : styles.tab} onClick={() => setActiveTab("siswa")}>Program Siswa</button>
                     <button className={activeTab === "scores" ? styles.tabActive : styles.tab} onClick={() => setActiveTab("scores")}>Score Detail</button>
                     <button className={activeTab === "mitra" ? styles.tabActive : styles.tab} onClick={() => setActiveTab("mitra")}>Master Mitra</button>
+                    <button className={activeTab === "pega" ? styles.tabActive : styles.tab} onClick={() => setActiveTab("pega")}>Sync Pega</button>
                 </div>
 
                 {activeTab === "quiz" && (
@@ -1246,6 +1318,135 @@ export default function AdminPage() {
                                         <button disabled={mitraPage >= getTotalPages(mitraList)} onClick={() => setMitraPage(p => p + 1)}>Next »</button>
                                     </div>
                                 </>
+                            )}
+                        </section>
+                    </div>
+                )}
+
+                {activeTab === "pega" && (
+                    <div className={styles.content}>
+                        <section className={styles.section}>
+                            <div className={styles.sectionHeader}>
+                                <h2>Sync Score ke Pega</h2>
+                            </div>
+
+                            {/* Quiz/Lesson Dropdown */}
+                            <div className={styles.formGroup}>
+                                <label>Pilih Quiz/Lesson:</label>
+                                <div className={styles.formRow}>
+                                    <select
+                                        value={pegaSelectedLesson}
+                                        onChange={(e) => {
+                                            setPegaSelectedLesson(e.target.value);
+                                            fetchPegaScores(e.target.value);
+                                        }}
+                                        style={{ flex: 1, padding: "10px", borderRadius: "6px", border: "1px solid #d1d5db" }}
+                                    >
+                                        <option value="">-- Pilih Lesson --</option>
+                                        {pegaLessons.map((lesson, i) => (
+                                            <option key={i} value={lesson}>{lesson}</option>
+                                        ))}
+                                    </select>
+                                    <button onClick={() => fetchPegaScores(pegaSelectedLesson)} className={styles.addBtn} disabled={!pegaSelectedLesson}>Refresh</button>
+                                </div>
+                            </div>
+
+                            {/* Scores Preview Table */}
+                            {pegaScores.length > 0 && (
+                                <>
+                                    <div className={styles.formGroup} style={{ marginTop: "20px" }}>
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                                            <span>Data Score ({pegaScores.length})</span>
+                                            <div style={{ display: "flex", gap: "10px" }}>
+                                                <button
+                                                    onClick={syncToPega}
+                                                    disabled={pegaLoading || pegaSelectedScores.length === 0}
+                                                    style={{
+                                                        background: pegaLoading ? "#9ca3af" : "#10b981",
+                                                        color: "white",
+                                                        border: "none",
+                                                        padding: "10px 20px",
+                                                        borderRadius: "6px",
+                                                        cursor: pegaLoading ? "wait" : "pointer",
+                                                        fontWeight: 600
+                                                    }}
+                                                >
+                                                    {pegaLoading ? "Mengirim..." : `Kirim ${pegaSelectedScores.length} Terpilih ke Pega`}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <table className={styles.table}>
+                                            <thead>
+                                                <tr>
+                                                    <th><input type="checkbox" checked={pegaSelectedScores.length === pegaScores.length && pegaScores.length > 0} onChange={(e) => setPegaSelectedScores(e.target.checked ? pegaScores.map((_, i) => i) : [])} /></th>
+                                                    <th>No</th>
+                                                    <th>Status</th>
+                                                    <th>Login</th>
+                                                    <th>Batch</th>
+                                                    <th>Program</th>
+                                                    <th>Section</th>
+                                                    <th>Score</th>
+                                                    <th>Date</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {pegaScores.map((s, i) => (
+                                                    <tr key={i} style={{ background: s.pegaSyncStatus === "success" ? "#d1fae5" : s.pegaSyncStatus === "failed" ? "#fee2e2" : "inherit" }}>
+                                                        <td><input type="checkbox" checked={pegaSelectedScores.includes(i)} onChange={(e) => setPegaSelectedScores(e.target.checked ? [...pegaSelectedScores, i] : pegaSelectedScores.filter(x => x !== i))} /></td>
+                                                        <td>{i + 1}</td>
+                                                        <td>
+                                                            {s.pegaSyncStatus === "success" && <span style={{ color: "#059669" }}>🟢 Synced</span>}
+                                                            {s.pegaSyncStatus === "failed" && <span style={{ color: "#dc2626" }} title={s.pegaSyncError}>🔴 Failed</span>}
+                                                            {!s.pegaSyncStatus && <span style={{ color: "#9ca3af" }}>⚪ Pending</span>}
+                                                        </td>
+                                                        <td>{s.Login}</td>
+                                                        <td>{s.Batch}</td>
+                                                        <td>{s.NamaProgram}</td>
+                                                        <td>{s.Section}</td>
+                                                        <td>{s.Score}</td>
+                                                        <td>{s.Date}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            )}
+
+                            {pegaSelectedLesson && pegaScores.length === 0 && (
+                                <p style={{ marginTop: "20px", color: "#6b7280" }}>Tidak ada data score untuk lesson ini</p>
+                            )}
+
+                            {/* Sync Results */}
+                            {pegaSyncResult && (
+                                <div style={{ marginTop: "20px", padding: "16px", borderRadius: "8px", background: pegaSyncResult.error ? "#fee2e2" : "#f0fdf4", border: `1px solid ${pegaSyncResult.error ? "#fecaca" : "#bbf7d0"}` }}>
+                                    {pegaSyncResult.error ? (
+                                        <p style={{ color: "#dc2626" }}>Error: {pegaSyncResult.error}</p>
+                                    ) : (
+                                        <>
+                                            <p style={{ fontWeight: 600, marginBottom: "10px" }}>
+                                                Hasil Sync: <span style={{ color: "#059669" }}>{pegaSyncResult.successCount} Berhasil</span> | <span style={{ color: "#dc2626" }}>{pegaSyncResult.failedCount} Gagal</span>
+                                            </p>
+                                            {pegaSyncResult.results?.failed?.length > 0 && (
+                                                <div style={{ marginTop: "10px" }}>
+                                                    <p style={{ fontWeight: 600, color: "#dc2626", marginBottom: "5px" }}>Detail Gagal:</p>
+                                                    <table className={styles.table}>
+                                                        <thead><tr><th>Row</th><th>Login</th><th>Error</th></tr></thead>
+                                                        <tbody>
+                                                            {pegaSyncResult.results.failed.map((f, i) => (
+                                                                <tr key={i} style={{ background: "#fee2e2" }}>
+                                                                    <td>{f.row}</td>
+                                                                    <td>{f.login}</td>
+                                                                    <td>{f.error}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
                             )}
                         </section>
                     </div>

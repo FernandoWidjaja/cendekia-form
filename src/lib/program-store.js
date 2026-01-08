@@ -220,3 +220,36 @@ export async function deleteScoreDetail(login, lesson) {
         return { success: false, error: error.message };
     }
 }
+
+/**
+ * Update Pega sync status for a score
+ * @param {string} login - User login
+ * @param {string} lesson - Lesson name
+ * @param {string} status - "success" | "failed" | null
+ * @param {string} errorMsg - Error message if failed
+ */
+export async function updateScoreSyncStatus(login, lesson, status, errorMsg = "") {
+    try {
+        // Try both regular and ASM keys
+        const keys = [
+            `scoredetail:${login.toUpperCase()}:${lesson}`,
+            `scoredetail:asm:${login.toUpperCase()}:${lesson}`,
+        ];
+
+        for (const key of keys) {
+            const data = await redis.get(key);
+            if (data) {
+                data.pegaSyncStatus = status;
+                data.pegaSyncError = errorMsg;
+                data.pegaSyncDate = new Date().toISOString();
+                await redis.set(key, data);
+                return { success: true };
+            }
+        }
+
+        return { success: false, error: "Score not found" };
+    } catch (error) {
+        console.error("updateScoreSyncStatus error:", error);
+        return { success: false, error: error.message };
+    }
+}

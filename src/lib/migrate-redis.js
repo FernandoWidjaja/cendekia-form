@@ -2,13 +2,30 @@ import { Redis } from "@upstash/redis";
 
 /**
  * Migration Script: Convert old multi-key storage to single-key storage
- * Run this ONCE after deploying the new code to migrate existing data
+ * UPDATED: Uses SCAN instead of KEYS to handle large datasets
  */
 
 const redis = new Redis({
     url: process.env.UPSTASH_REDIS_REST_URL || "",
     token: process.env.UPSTASH_REDIS_REST_TOKEN || "",
 });
+
+/**
+ * Scan all keys matching a pattern using SCAN (handles large datasets)
+ */
+async function scanKeys(pattern) {
+    const allKeys = [];
+    let cursor = 0;
+
+    do {
+        const result = await redis.scan(cursor, { match: pattern, count: 100 });
+        cursor = result[0];
+        const keys = result[1];
+        allKeys.push(...keys);
+    } while (cursor !== 0);
+
+    return allKeys;
+}
 
 /**
  * Migrate quizzes from quiz:* keys to quizzes:all
@@ -24,8 +41,8 @@ async function migrateQuizzes() {
             return { skipped: true, count: existing.length };
         }
 
-        // Get all old quiz keys
-        const keys = await redis.keys("quiz:*");
+        // Get all old quiz keys using SCAN
+        const keys = await scanKeys("quiz:*");
         console.log(`Found ${keys.length} quiz keys`);
 
         if (keys.length === 0) {
@@ -50,12 +67,6 @@ async function migrateQuizzes() {
         await redis.set("quizzes:all", quizzes);
         console.log(`Migrated ${quizzes.length} quizzes to quizzes:all`);
 
-        // Optionally delete old keys (uncomment after verification)
-        // for (const key of keys) {
-        //     await redis.del(key);
-        // }
-        // console.log("Old quiz keys deleted");
-
         return { success: true, count: quizzes.length };
     } catch (error) {
         console.error("Quiz migration error:", error);
@@ -70,8 +81,8 @@ async function migrateAttempts() {
     console.log("\n=== Migrating Attempts ===");
 
     try {
-        // Get all old attempt keys
-        const keys = await redis.keys("attempt:*");
+        // Get all old attempt keys using SCAN
+        const keys = await scanKeys("attempt:*");
         console.log(`Found ${keys.length} attempt keys`);
 
         if (keys.length === 0) {
@@ -112,12 +123,6 @@ async function migrateAttempts() {
 
         console.log(`Migrated attempts for ${userCount} users`);
 
-        // Optionally delete old keys (uncomment after verification)
-        // for (const key of keys) {
-        //     await redis.del(key);
-        // }
-        // console.log("Old attempt keys deleted");
-
         return { success: true, count: keys.length, users: userCount };
     } catch (error) {
         console.error("Attempts migration error:", error);
@@ -139,9 +144,17 @@ async function migrateScoreDetails() {
             return { skipped: true, count: existing.length };
         }
 
-        // Get keys from index
-        const indexKeys = await redis.get("scoredetail:keys") || [];
-        console.log(`Found ${indexKeys.length} score detail keys in index`);
+        // Get keys from index first (old method)
+        let indexKeys = await redis.get("scoredetail:keys") || [];
+
+        // If no index, try scanning
+        if (indexKeys.length === 0) {
+            indexKeys = await scanKeys("scoredetail:*");
+            // Filter out the keys index itself
+            indexKeys = indexKeys.filter(k => k !== "scoredetail:keys");
+        }
+
+        console.log(`Found ${indexKeys.length} score detail keys`);
 
         if (indexKeys.length === 0) {
             console.log("No score details to migrate");
@@ -166,13 +179,6 @@ async function migrateScoreDetails() {
         await redis.set("scoredetails:all", scores);
         console.log(`Migrated ${scores.length} score details to scoredetails:all`);
 
-        // Optionally delete old keys (uncomment after verification)
-        // await redis.del("scoredetail:keys");
-        // for (const key of indexKeys) {
-        //     await redis.del(key);
-        // }
-        // console.log("Old score detail keys deleted");
-
         return { success: true, count: scores.length };
     } catch (error) {
         console.error("Score details migration error:", error);
@@ -194,9 +200,17 @@ async function migrateMitra() {
             return { skipped: true, count: existing.length };
         }
 
-        // Get keys from index
-        const indexKeys = await redis.get("mitrakerja:keys") || [];
-        console.log(`Found ${indexKeys.length} mitra keys in index`);
+        // Get keys from index first (old method)
+        let indexKeys = await redis.get("mitrakerja:keys") || [];
+
+        // If no index, try scanning
+        if (indexKeys.length === 0) {
+            indexKeys = await scanKeys("mitrakerja:*");
+            // Filter out the keys index itself
+            indexKeys = indexKeys.filter(k => k !== "mitrakerja:keys");
+        }
+
+        console.log(`Found ${indexKeys.length} mitra keys`);
 
         if (indexKeys.length === 0) {
             console.log("No mitra to migrate");
@@ -215,13 +229,6 @@ async function migrateMitra() {
         // Save to new format
         await redis.set("mitrakerja:all", mitraList);
         console.log(`Migrated ${mitraList.length} mitra to mitrakerja:all`);
-
-        // Optionally delete old keys (uncomment after verification)
-        // await redis.del("mitrakerja:keys");
-        // for (const key of indexKeys) {
-        //     await redis.del(key);
-        // }
-        // console.log("Old mitra keys deleted");
 
         return { success: true, count: mitraList.length };
     } catch (error) {

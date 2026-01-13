@@ -2,7 +2,8 @@ import { Redis } from "@upstash/redis";
 
 /**
  * Quiz KV Store Utility Functions using Upstash Redis
- * Keys format: "quiz:{lessonName}"
+ * OPTIMIZED: Uses single key storage to reduce commands
+ * Keys: "quizzes:all" for all quizzes, "attempts:LOGIN" for user attempts
  */
 
 // Initialize Redis client
@@ -11,21 +12,15 @@ const redis = new Redis({
     token: process.env.UPSTASH_REDIS_REST_TOKEN || "",
 });
 
+// ==================== QUIZ STORAGE (OPTIMIZED) ====================
+
 /**
- * Get all quizzes
+ * Get all quizzes - OPTIMIZED: 1 command instead of 1+N
  */
 export async function getAllQuizzes() {
     try {
-        const keys = await redis.keys("quiz:*");
-        if (!keys.length) return [];
-
-        const quizzes = await Promise.all(
-            keys.map(async (key) => {
-                const quiz = await redis.get(key);
-                return { key, ...quiz };
-            })
-        );
-        return quizzes;
+        const quizzes = await redis.get("quizzes:all");
+        return quizzes || [];
     } catch (error) {
         console.error("Redis getAllQuizzes error:", error);
         return [];
@@ -33,13 +28,12 @@ export async function getAllQuizzes() {
 }
 
 /**
- * Get quiz by lesson name
+ * Get quiz by lesson name - OPTIMIZED: uses cached array
  */
 export async function getQuiz(lessonName) {
     try {
-        const key = `quiz:${lessonName}`;
-        const quiz = await redis.get(key);
-        return quiz;
+        const quizzes = await getAllQuizzes();
+        return quizzes.find(q => q.lessonName === lessonName) || null;
     } catch (error) {
         console.error("Redis getQuiz error:", error);
         return null;
@@ -47,12 +41,26 @@ export async function getQuiz(lessonName) {
 }
 
 /**
- * Create or update quiz
+ * Create or update quiz - OPTIMIZED: updates single array
  */
 export async function saveQuiz(lessonName, quizData) {
     try {
-        const key = `quiz:${lessonName}`;
-        await redis.set(key, quizData);
+        const quizzes = await getAllQuizzes();
+        const index = quizzes.findIndex(q => q.lessonName === lessonName);
+        
+        const quizWithMeta = {
+            ...quizData,
+            lessonName,
+            key: `quiz:${lessonName}`, // Keep for compatibility
+        };
+        
+        if (index >= 0) {
+            quizzes[index] = quizWithMeta;
+        } else {
+            quizzes.push(quizWithMeta);
+        }
+        
+        await redis.set("quizzes:all", quizzes);
         return true;
     } catch (error) {
         console.error("Redis saveQuiz error:", error);
@@ -61,12 +69,13 @@ export async function saveQuiz(lessonName, quizData) {
 }
 
 /**
- * Delete quiz
+ * Delete quiz - OPTIMIZED: removes from array
  */
 export async function deleteQuiz(lessonName) {
     try {
-        const key = `quiz:${lessonName}`;
-        await redis.del(key);
+        const quizzes = await getAllQuizzes();
+        const filtered = quizzes.filter(q => q.lessonName !== lessonName);
+        await redis.set("quizzes:all", filtered);
         return true;
     } catch (error) {
         console.error("Redis deleteQuiz error:", error);
@@ -130,19 +139,22 @@ export function calculateScore(questions, answers) {
     };
 }
 
-// ==================== QUIZ ATTEMPTS ====================
+// ==================== QUIZ ATTEMPTS (OPTIMIZED) ====================
 
 /**
- * Save quiz attempt for a user
+ * Save quiz attempt for a user - OPTIMIZED: stores per-user object
  */
 export async function saveAttempt(login, lessonName, result) {
     try {
-        const key = `attempt:${login.toUpperCase()}:${lessonName}`;
-        const data = {
+        const userKey = `attempts:${login.toUpperCase()}`;
+        const attempts = await redis.get(userKey) || {};
+        
+        attempts[lessonName] = {
             ...result,
             completedAt: new Date().toISOString(),
         };
-        await redis.set(key, data);
+        
+        await redis.set(userKey, attempts);
         return { success: true };
     } catch (error) {
         console.error("saveAttempt error:", error);
@@ -151,13 +163,13 @@ export async function saveAttempt(login, lessonName, result) {
 }
 
 /**
- * Get quiz attempt for a user
+ * Get quiz attempt for a user - OPTIMIZED: 1 GET for all attempts
  */
 export async function getAttempt(login, lessonName) {
     try {
-        const key = `attempt:${login.toUpperCase()}:${lessonName}`;
-        const attempt = await redis.get(key);
-        return attempt;
+        const userKey = `attempts:${login.toUpperCase()}`;
+        const attempts = await redis.get(userKey) || {};
+        return attempts[lessonName] || null;
     } catch (error) {
         console.error("getAttempt error:", error);
         return null;
@@ -165,18 +177,12 @@ export async function getAttempt(login, lessonName) {
 }
 
 /**
- * Get multiple attempts for a user (all lessons)
+ * Get multiple attempts for a user - OPTIMIZED: 1 command instead of 1+N
  */
 export async function getUserAttempts(login) {
     try {
-        const keys = await redis.keys(`attempt:${login.toUpperCase()}:*`);
-        if (!keys.length) return {};
-
-        const attempts = {};
-        for (const key of keys) {
-            const lessonName = key.split(":").slice(2).join(":");
-            attempts[lessonName] = await redis.get(key);
-        }
+        const userKey = `attempts:${login.toUpperCase()}`;
+        const attempts = await redis.get(userKey) || {};
         return attempts;
     } catch (error) {
         console.error("getUserAttempts error:", error);

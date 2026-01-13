@@ -2,6 +2,7 @@ import { Redis } from "@upstash/redis";
 
 /**
  * Program Store - CRUD for Master Program, Program Siswa, and ScoreDetail
+ * OPTIMIZED: Uses single key storage to reduce commands
  */
 
 const redis = new Redis({
@@ -10,6 +11,7 @@ const redis = new Redis({
 });
 
 // ==================== MASTER NAMA PROGRAM ====================
+// Already using single key pattern - no changes needed
 
 export async function getAllPrograms() {
     try {
@@ -53,6 +55,7 @@ export async function deleteProgram(id) {
 }
 
 // ==================== MASTER PROGRAM PER SISWA ====================
+// Already using single key pattern - no changes needed
 
 export async function getAllProgramSiswa() {
     try {
@@ -138,27 +141,40 @@ export async function bulkImportProgramSiswa(dataArray) {
     };
 }
 
-// ==================== SCORE DETAIL STORAGE ====================
+// ==================== SCORE DETAIL STORAGE (OPTIMIZED) ====================
 
 /**
- * Save ScoreDetail to Upstash
+ * Save ScoreDetail to Upstash - OPTIMIZED: uses single key array
  * @param {object} scoreData - Score data to save
- * @param {boolean} isASM - If true, prefix key with 'asm:' for separate storage
+ * @param {boolean} isASM - If true, marks as ASM user
  */
 export async function saveScoreDetail(scoreData, isASM = false) {
     try {
-        // ASM users get 'asm:' prefix for separate storage
-        const prefix = isASM ? "asm:" : "";
-        const key = `scoredetail:${prefix}${scoreData.Login}:${scoreData.Lesson}`;
-        await redis.set(key, scoreData);
+        const allScores = await redis.get("scoredetails:all") || [];
 
-        // Also add to list for easy retrieval
-        const allKeys = await redis.get("scoredetail:keys") || [];
-        if (!allKeys.includes(key)) {
-            allKeys.push(key);
-            await redis.set("scoredetail:keys", allKeys);
+        // Create unique key for lookup
+        const login = scoreData.Login.toUpperCase();
+        const lesson = scoreData.Lesson;
+
+        // Mark ASM users
+        const dataToSave = {
+            ...scoreData,
+            Login: login,
+            isASM: isASM,
+        };
+
+        // Check if already exists (update) or new (add)
+        const index = allScores.findIndex(
+            s => s.Login === login && s.Lesson === lesson
+        );
+
+        if (index >= 0) {
+            allScores[index] = dataToSave;
+        } else {
+            allScores.push(dataToSave);
         }
 
+        await redis.set("scoredetails:all", allScores);
         return { success: true };
     } catch (error) {
         console.error("saveScoreDetail error:", error);
@@ -167,21 +183,12 @@ export async function saveScoreDetail(scoreData, isASM = false) {
 }
 
 /**
- * Get all ScoreDetails - optimized with parallel fetching
+ * Get all ScoreDetails - OPTIMIZED: 1 command instead of 1+N
  */
 export async function getAllScoreDetails() {
     try {
-        const keys = await redis.get("scoredetail:keys") || [];
-
-        if (keys.length === 0) return [];
-
-        // Fetch all data in parallel for better performance
-        const results = await Promise.all(
-            keys.map(key => redis.get(key))
-        );
-
-        // Filter out null values (deleted keys)
-        return results.filter(data => data !== null);
+        const scores = await redis.get("scoredetails:all") || [];
+        return scores;
     } catch (error) {
         console.error("getAllScoreDetails error:", error);
         return [];
@@ -206,14 +213,11 @@ export async function getScoreDetailsByLogin(login) {
  */
 export async function deleteScoreDetail(login, lesson) {
     try {
-        const key = `scoredetail:${login.toUpperCase()}:${lesson}`;
-        await redis.del(key);
-
-        // Remove from keys list
-        const allKeys = await redis.get("scoredetail:keys") || [];
-        const updatedKeys = allKeys.filter(k => k !== key);
-        await redis.set("scoredetail:keys", updatedKeys);
-
+        const allScores = await redis.get("scoredetails:all") || [];
+        const filtered = allScores.filter(
+            s => !(s.Login === login.toUpperCase() && s.Lesson === lesson)
+        );
+        await redis.set("scoredetails:all", filtered);
         return { success: true };
     } catch (error) {
         console.error("deleteScoreDetail error:", error);
@@ -222,7 +226,7 @@ export async function deleteScoreDetail(login, lesson) {
 }
 
 /**
- * Update Pega sync status for a score
+ * Update Pega sync status for a score - OPTIMIZED: updates in array
  * @param {string} login - User login
  * @param {string} lesson - Lesson name
  * @param {string} status - "success" | "failed" | null
@@ -230,21 +234,19 @@ export async function deleteScoreDetail(login, lesson) {
  */
 export async function updateScoreSyncStatus(login, lesson, status, errorMsg = "") {
     try {
-        // Try both regular and ASM keys
-        const keys = [
-            `scoredetail:${login.toUpperCase()}:${lesson}`,
-            `scoredetail:asm:${login.toUpperCase()}:${lesson}`,
-        ];
+        const allScores = await redis.get("scoredetails:all") || [];
+        const loginUpper = login.toUpperCase();
 
-        for (const key of keys) {
-            const data = await redis.get(key);
-            if (data) {
-                data.pegaSyncStatus = status;
-                data.pegaSyncError = errorMsg;
-                data.pegaSyncDate = new Date().toISOString();
-                await redis.set(key, data);
-                return { success: true };
-            }
+        const index = allScores.findIndex(
+            s => s.Login === loginUpper && s.Lesson === lesson
+        );
+
+        if (index >= 0) {
+            allScores[index].pegaSyncStatus = status;
+            allScores[index].pegaSyncError = errorMsg;
+            allScores[index].pegaSyncDate = new Date().toISOString();
+            await redis.set("scoredetails:all", allScores);
+            return { success: true };
         }
 
         return { success: false, error: "Score not found" };

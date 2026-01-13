@@ -83,6 +83,18 @@ export default function AdminPage() {
     const [pegaSelectedScores, setPegaSelectedScores] = useState([]);
     const [pegaSyncResult, setPegaSyncResult] = useState(null);
     const [pegaLoading, setPegaLoading] = useState(false);
+    const [pegaStatusFilter, setPegaStatusFilter] = useState(""); // "", "pending", "success", "failed"
+
+    // Email Report state
+    const [emailReportData, setEmailReportData] = useState([]);
+    const [emailSelectedItems, setEmailSelectedItems] = useState([]);
+    const [emailLoading, setEmailLoading] = useState(false);
+    const [emailResult, setEmailResult] = useState(null);
+    const [emailFilterDateStart, setEmailFilterDateStart] = useState("");
+    const [emailFilterDateEnd, setEmailFilterDateEnd] = useState("");
+    const [emailFilterScoreMin, setEmailFilterScoreMin] = useState("");
+    const [emailFilterScoreMax, setEmailFilterScoreMax] = useState("");
+    const [emailFilterStatus, setEmailFilterStatus] = useState(""); // "", "lulus", "tidak_lulus"
 
     // Items per page
     const ITEMS_PER_PAGE = 10;
@@ -1347,71 +1359,88 @@ export default function AdminPage() {
                                             <option key={i} value={lesson}>{lesson}</option>
                                         ))}
                                     </select>
+                                    <select
+                                        value={pegaStatusFilter}
+                                        onChange={(e) => setPegaStatusFilter(e.target.value)}
+                                        style={{ padding: "10px", borderRadius: "6px", border: "1px solid #d1d5db" }}
+                                    >
+                                        <option value="">Semua Status</option>
+                                        <option value="pending">⚪ Pending</option>
+                                        <option value="success">🟢 Synced</option>
+                                        <option value="failed">🔴 Failed</option>
+                                    </select>
                                     <button onClick={() => fetchPegaScores(pegaSelectedLesson)} className={styles.addBtn} disabled={!pegaSelectedLesson}>Refresh</button>
                                 </div>
                             </div>
 
                             {/* Scores Preview Table */}
-                            {pegaScores.length > 0 && (
-                                <>
-                                    <div className={styles.formGroup} style={{ marginTop: "20px" }}>
-                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                                            <span>Data Score ({pegaScores.length})</span>
-                                            <div style={{ display: "flex", gap: "10px" }}>
-                                                <button
-                                                    onClick={syncToPega}
-                                                    disabled={pegaLoading || pegaSelectedScores.length === 0}
-                                                    style={{
-                                                        background: pegaLoading ? "#9ca3af" : "#10b981",
-                                                        color: "white",
-                                                        border: "none",
-                                                        padding: "10px 20px",
-                                                        borderRadius: "6px",
-                                                        cursor: pegaLoading ? "wait" : "pointer",
-                                                        fontWeight: 600
-                                                    }}
-                                                >
-                                                    {pegaLoading ? "Mengirim..." : `Kirim ${pegaSelectedScores.length} Terpilih ke Pega`}
-                                                </button>
+                            {pegaScores.length > 0 && (() => {
+                                const filteredScores = pegaScores.filter(s => {
+                                    if (!pegaStatusFilter) return true;
+                                    if (pegaStatusFilter === "pending") return !s.pegaSyncStatus;
+                                    return s.pegaSyncStatus === pegaStatusFilter;
+                                });
+                                return (
+                                    <>
+                                        <div className={styles.formGroup} style={{ marginTop: "20px" }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                                                <span>Data Score ({filteredScores.length} dari {pegaScores.length})</span>
+                                                <div style={{ display: "flex", gap: "10px" }}>
+                                                    <button
+                                                        onClick={syncToPega}
+                                                        disabled={pegaLoading || pegaSelectedScores.length === 0}
+                                                        style={{
+                                                            background: pegaLoading ? "#9ca3af" : "#10b981",
+                                                            color: "white",
+                                                            border: "none",
+                                                            padding: "10px 20px",
+                                                            borderRadius: "6px",
+                                                            cursor: pegaLoading ? "wait" : "pointer",
+                                                            fontWeight: 600
+                                                        }}
+                                                    >
+                                                        {pegaLoading ? "Mengirim..." : `Kirim ${pegaSelectedScores.length} Terpilih ke Pega`}
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <table className={styles.table}>
-                                            <thead>
-                                                <tr>
-                                                    <th><input type="checkbox" checked={pegaSelectedScores.length === pegaScores.length && pegaScores.length > 0} onChange={(e) => setPegaSelectedScores(e.target.checked ? pegaScores.map((_, i) => i) : [])} /></th>
-                                                    <th>No</th>
-                                                    <th>Status</th>
-                                                    <th>Login</th>
-                                                    <th>Batch</th>
-                                                    <th>Program</th>
-                                                    <th>Section</th>
-                                                    <th>Score</th>
-                                                    <th>Date</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {pegaScores.map((s, i) => (
-                                                    <tr key={i} style={{ background: s.pegaSyncStatus === "success" ? "#d1fae5" : s.pegaSyncStatus === "failed" ? "#fee2e2" : "inherit" }}>
-                                                        <td><input type="checkbox" checked={pegaSelectedScores.includes(i)} onChange={(e) => setPegaSelectedScores(e.target.checked ? [...pegaSelectedScores, i] : pegaSelectedScores.filter(x => x !== i))} /></td>
-                                                        <td>{i + 1}</td>
-                                                        <td>
-                                                            {s.pegaSyncStatus === "success" && <span style={{ color: "#059669" }}>🟢 Synced</span>}
-                                                            {s.pegaSyncStatus === "failed" && <span style={{ color: "#dc2626" }} title={s.pegaSyncError}>🔴 Failed</span>}
-                                                            {!s.pegaSyncStatus && <span style={{ color: "#9ca3af" }}>⚪ Pending</span>}
-                                                        </td>
-                                                        <td>{s.Login}</td>
-                                                        <td>{s.Batch}</td>
-                                                        <td>{s.NamaProgram}</td>
-                                                        <td>{s.Section}</td>
-                                                        <td>{s.Score}</td>
-                                                        <td>{s.Date}</td>
+                                            <table className={styles.table}>
+                                                <thead>
+                                                    <tr>
+                                                        <th><input type="checkbox" checked={pegaSelectedScores.length === filteredScores.length && filteredScores.length > 0} onChange={(e) => setPegaSelectedScores(e.target.checked ? filteredScores.map((_, i) => i) : [])} /></th>
+                                                        <th>No</th>
+                                                        <th>Status</th>
+                                                        <th>Login</th>
+                                                        <th>Batch</th>
+                                                        <th>Program</th>
+                                                        <th>Section</th>
+                                                        <th>Score</th>
+                                                        <th>Date</th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </>
-                            )}
+                                                </thead>
+                                                <tbody>
+                                                    {filteredScores.map((s, i) => (
+                                                        <tr key={i} style={{ background: s.pegaSyncStatus === "success" ? "#d1fae5" : s.pegaSyncStatus === "failed" ? "#fee2e2" : "inherit" }}>
+                                                            <td><input type="checkbox" checked={pegaSelectedScores.includes(i)} onChange={(e) => setPegaSelectedScores(e.target.checked ? [...pegaSelectedScores, i] : pegaSelectedScores.filter(x => x !== i))} /></td>
+                                                            <td>{i + 1}</td>
+                                                            <td>
+                                                                {s.pegaSyncStatus === "success" && <span style={{ color: "#059669" }}>🟢 Synced</span>}
+                                                                {s.pegaSyncStatus === "failed" && <span style={{ color: "#dc2626" }} title={s.pegaSyncError}>🔴 Failed</span>}
+                                                                {!s.pegaSyncStatus && <span style={{ color: "#9ca3af" }}>⚪ Pending</span>}
+                                                            </td>
+                                                            <td>{s.Login}</td>
+                                                            <td>{s.Batch}</td>
+                                                            <td>{s.NamaProgram}</td>
+                                                            <td>{s.Section}</td>
+                                                            <td>{s.Score}</td>
+                                                            <td>{s.Date}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </>
+                                );
+                            })()}
 
                             {pegaSelectedLesson && pegaScores.length === 0 && (
                                 <p style={{ marginTop: "20px", color: "#6b7280" }}>Tidak ada data score untuk lesson ini</p>

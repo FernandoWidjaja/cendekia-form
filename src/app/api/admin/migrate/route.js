@@ -201,12 +201,12 @@ async function migrateScoreDetails() {
         return { skipped: true, count: existing.length };
     }
 
-    // Get from index first
+    // Get from index first (this is likely already populated)
     let indexKeys = await redis.get("scoredetail:keys") || [];
 
     // If no index, try scan
     if (indexKeys.length === 0) {
-        indexKeys = await scanKeys("scoredetail:*", 200);
+        indexKeys = await scanKeys("scoredetail:*", 500);
         indexKeys = indexKeys.filter(k => k !== "scoredetail:keys");
     }
 
@@ -215,13 +215,21 @@ async function migrateScoreDetails() {
         return { success: true, count: 0 };
     }
 
+    // Fetch all scores using mget for efficiency (batch of 50)
     const scores = [];
-    for (const key of indexKeys) {
-        const score = await redis.get(key);
-        if (score) {
-            const isASM = key.includes(":asm:");
-            scores.push({ ...score, isASM });
-        }
+    const batchSize = 50;
+
+    for (let i = 0; i < indexKeys.length; i += batchSize) {
+        const batch = indexKeys.slice(i, i + batchSize);
+        const results = await redis.mget(...batch);
+
+        results.forEach((score, idx) => {
+            if (score) {
+                const key = batch[idx];
+                const isASM = key.includes(":asm:");
+                scores.push({ ...score, isASM });
+            }
+        });
     }
 
     await redis.set("scoredetails:all", scores);

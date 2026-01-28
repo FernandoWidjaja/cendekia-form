@@ -6,7 +6,7 @@ import * as XLSX from "xlsx";
 import styles from "./page.module.css";
 
 // Session management constants
-const INACTIVITY_TIMEOUT = 60000; // 1 minute in milliseconds
+const INACTIVITY_TIMEOUT = 600000; // 1 minute in milliseconds
 const SESSION_KEY = "adminSession";
 
 export default function AdminPage() {

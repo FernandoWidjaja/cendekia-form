@@ -56,11 +56,14 @@ export async function POST(request) {
             case "scoredetails":
                 result = await migrateScoreDetails();
                 break;
+            case "sync":
+                result = await syncScoreDetails();
+                break;
             case "mitra":
                 result = await migrateMitra();
                 break;
             default:
-                return NextResponse.json({ error: "Invalid step. Use: quizzes, attempts, scoredetails, mitra" }, { status: 400 });
+                return NextResponse.json({ error: "Invalid step. Use: quizzes, attempts, scoredetails, sync, mitra" }, { status: 400 });
         }
 
         return NextResponse.json({
@@ -195,28 +198,24 @@ async function migrateAttempts() {
 }
 
 async function migrateScoreDetails() {
-    // Check if already migrated
-    const existing = await redis.get("scoredetails:all");
-    if (existing && existing.length > 0) {
-        return { skipped: true, count: existing.length };
-    }
+    // Get existing data (don't skip - we'll merge)
+    const existing = await redis.get("scoredetails:all") || [];
 
     // Get from index first (this is likely already populated)
     let indexKeys = await redis.get("scoredetail:keys") || [];
 
     // If no index, try scan
     if (indexKeys.length === 0) {
-        indexKeys = await scanKeys("scoredetail:*", 500);
+        indexKeys = await scanKeys("scoredetail:*", 1000);
         indexKeys = indexKeys.filter(k => k !== "scoredetail:keys");
     }
 
     if (indexKeys.length === 0) {
-        await redis.set("scoredetails:all", []);
-        return { success: true, count: 0 };
+        return { success: true, count: existing.length, newAdded: 0 };
     }
 
     // Fetch all scores using mget for efficiency (batch of 50)
-    const scores = [];
+    const oldFormatScores = [];
     const batchSize = 50;
 
     for (let i = 0; i < indexKeys.length; i += batchSize) {
@@ -227,13 +226,89 @@ async function migrateScoreDetails() {
             if (score) {
                 const key = batch[idx];
                 const isASM = key.includes(":asm:");
-                scores.push({ ...score, isASM });
+                oldFormatScores.push({ ...score, isASM });
             }
         });
     }
 
-    await redis.set("scoredetails:all", scores);
-    return { success: true, count: scores.length };
+    // Merge: add scores from old format that don't exist in new format
+    let newAdded = 0;
+    for (const oldScore of oldFormatScores) {
+        const exists = existing.some(
+            s => s.Login === oldScore.Login && s.Lesson === oldScore.Lesson
+        );
+        if (!exists) {
+            existing.push(oldScore);
+            newAdded++;
+        }
+    }
+
+    await redis.set("scoredetails:all", existing);
+    return { success: true, count: existing.length, newAdded, fromOldFormat: oldFormatScores.length };
+}
+
+/**
+ * Sync: specifically designed to sync new data from old format to new format
+ * This scans ALL scoredetail:* keys and merges them
+ */
+async function syncScoreDetails() {
+    // Get existing data from new format
+    const existing = await redis.get("scoredetails:all") || [];
+    console.log(`Existing scores in new format: ${existing.length}`);
+
+    // Scan ALL scoredetail:* keys (increase limit significantly)
+    const allOldKeys = await scanKeys("scoredetail:*", 5000);
+    const filteredKeys = allOldKeys.filter(k => k !== "scoredetail:keys");
+    console.log(`Found ${filteredKeys.length} keys in old format`);
+
+    if (filteredKeys.length === 0) {
+        return { success: true, count: existing.length, newAdded: 0, message: "No old format keys found" };
+    }
+
+    // Fetch all scores from old format
+    const oldFormatScores = [];
+    const batchSize = 50;
+
+    for (let i = 0; i < filteredKeys.length; i += batchSize) {
+        const batch = filteredKeys.slice(i, i + batchSize);
+        const results = await redis.mget(...batch);
+
+        results.forEach((score, idx) => {
+            if (score) {
+                const key = batch[idx];
+                const isASM = key.includes(":asm:");
+                oldFormatScores.push({ ...score, isASM });
+            }
+        });
+    }
+
+    console.log(`Fetched ${oldFormatScores.length} scores from old format`);
+
+    // Merge: add scores from old format that don't exist in new format
+    let newAdded = 0;
+    for (const oldScore of oldFormatScores) {
+        const login = (oldScore.Login || "").toUpperCase();
+        const lesson = oldScore.Lesson || "";
+
+        const exists = existing.some(
+            s => (s.Login || "").toUpperCase() === login && s.Lesson === lesson
+        );
+
+        if (!exists) {
+            existing.push({ ...oldScore, Login: login });
+            newAdded++;
+        }
+    }
+
+    console.log(`Adding ${newAdded} new scores to new format`);
+    await redis.set("scoredetails:all", existing);
+
+    return {
+        success: true,
+        totalInNewFormat: existing.length,
+        newAdded,
+        scannedFromOldFormat: oldFormatScores.length
+    };
 }
 
 async function migrateMitra() {

@@ -46,7 +46,7 @@ const getMasterAuthHeader = () => {
  */
 export async function getEmployeeData(loginEmail) {
     // List of companies to try (including ASM)
-    const companies = ["SISWA", "SRNM", "SASI", "ASM"];
+    const companies = ["SISWA", "SRNM", "SASI", "ASM", "SIMAS"];
 
     console.log("=== GetEmployeeData Start ===");
     console.log("Login:", loginEmail);

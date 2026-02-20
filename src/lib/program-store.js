@@ -113,6 +113,33 @@ export async function deleteProgramSiswa(login) {
     }
 }
 
+/**
+ * Update program siswa fields by original login
+ * @param {string} originalLogin - The current login (identifier)
+ * @param {object} updates - { login?, namaProgram?, batch? }
+ */
+export async function updateProgramSiswa(originalLogin, updates) {
+    try {
+        const all = await getAllProgramSiswa();
+        const loginUpper = originalLogin.toUpperCase();
+        const index = all.findIndex(p => p.login === loginUpper);
+
+        if (index < 0) {
+            return { success: false, error: "Siswa not found" };
+        }
+
+        if (updates.login) all[index].login = updates.login.toUpperCase();
+        if (updates.namaProgram !== undefined) all[index].namaProgram = updates.namaProgram;
+        if (updates.batch !== undefined) all[index].batch = updates.batch;
+
+        await redis.set("master:program-siswa", all);
+        return { success: true };
+    } catch (error) {
+        console.error("updateProgramSiswa error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
 export async function bulkImportProgramSiswa(dataArray) {
     const errors = [];
     const imported = [];

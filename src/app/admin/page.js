@@ -57,6 +57,8 @@ export default function AdminPage() {
     const [siswaFilterLogin, setSiswaFilterLogin] = useState("");
     const [siswaFilterProgram, setSiswaFilterProgram] = useState("");
     const [siswaFilterBatch, setSiswaFilterBatch] = useState("");
+    // Program Siswa edit state
+    const [editingSiswa, setEditingSiswa] = useState(null);
 
     // ScoreDetail state
     const [scoreDetails, setScoreDetails] = useState([]);
@@ -845,6 +847,36 @@ export default function AdminPage() {
         fetchProgramSiswa();
     };
 
+    // Program Siswa Edit handlers
+    const startEditSiswa = (siswa) => setEditingSiswa({ ...siswa, _originalLogin: siswa.login });
+    const cancelEditSiswa = () => setEditingSiswa(null);
+    const saveEditSiswa = async () => {
+        if (!editingSiswa) return;
+        try {
+            const res = await fetch("/api/admin/program-siswa", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", Authorization: authHeader },
+                body: JSON.stringify({
+                    originalLogin: editingSiswa._originalLogin,
+                    updates: {
+                        login: editingSiswa.login,
+                        namaProgram: editingSiswa.namaProgram,
+                        batch: editingSiswa.batch,
+                    },
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setEditingSiswa(null);
+                fetchProgramSiswa();
+            } else {
+                alert("Gagal update: " + (data.error || "Unknown error"));
+            }
+        } catch (e) {
+            alert("Error: " + e.message);
+        }
+    };
+
     const deleteScoreDetailHandler = async (login, lesson) => {
         if (!confirm(`Hapus score ${lesson}?`)) return;
         await fetch("/api/admin/scoredetail", {
@@ -1224,7 +1256,40 @@ export default function AdminPage() {
 
                             <table className={styles.table}>
                                 <thead><tr><th><input type="checkbox" checked={selectedSiswa.length === getFilteredSiswa().length && getFilteredSiswa().length > 0} onChange={(e) => setSelectedSiswa(e.target.checked ? getFilteredSiswa().map(p => p.login) : [])} /></th><th>Login</th><th>Nama Program</th><th>Batch</th><th>Aksi</th></tr></thead>
-                                <tbody>{paginate(getFilteredSiswa(), siswaPage).map((p, i) => (<tr key={i}><td><input type="checkbox" checked={selectedSiswa.includes(p.login)} onChange={(e) => setSelectedSiswa(e.target.checked ? [...selectedSiswa, p.login] : selectedSiswa.filter(x => x !== p.login))} /></td><td>{p.login}</td><td>{p.namaProgram}</td><td>{p.batch || "-"}</td><td><button onClick={() => deleteProgramSiswaHandler(p.login)}>Hapus</button></td></tr>))}</tbody>
+                                <tbody>{paginate(getFilteredSiswa(), siswaPage).map((p, i) => {
+                                    const isEditing = editingSiswa && editingSiswa._originalLogin === p.login;
+                                    return (
+                                        <tr key={i} style={{ background: isEditing ? "#fffbeb" : undefined }}>
+                                            <td><input type="checkbox" checked={selectedSiswa.includes(p.login)} onChange={(e) => setSelectedSiswa(e.target.checked ? [...selectedSiswa, p.login] : selectedSiswa.filter(x => x !== p.login))} /></td>
+                                            {isEditing ? (
+                                                <>
+                                                    <td><input type="text" value={editingSiswa.login} onChange={(e) => setEditingSiswa({ ...editingSiswa, login: e.target.value })} style={{ width: "120px", padding: "4px 6px", border: "2px solid #667eea", borderRadius: "4px" }} /></td>
+                                                    <td>
+                                                        <select value={editingSiswa.namaProgram} onChange={(e) => setEditingSiswa({ ...editingSiswa, namaProgram: e.target.value })} style={{ padding: "4px 6px", border: "2px solid #667eea", borderRadius: "4px" }}>
+                                                            <option value="">-- Pilih --</option>
+                                                            {programs.map((pr, pi) => <option key={pi} value={pr.namaProgram}>{pr.namaProgram}</option>)}
+                                                        </select>
+                                                    </td>
+                                                    <td><input type="text" value={editingSiswa.batch || ""} onChange={(e) => setEditingSiswa({ ...editingSiswa, batch: e.target.value })} style={{ width: "120px", padding: "4px 6px", border: "2px solid #667eea", borderRadius: "4px" }} /></td>
+                                                    <td style={{ whiteSpace: "nowrap" }}>
+                                                        <button onClick={saveEditSiswa} style={{ background: "#10b981", color: "white", border: "none", padding: "4px 10px", borderRadius: "4px", cursor: "pointer", marginRight: "4px" }}>Save</button>
+                                                        <button onClick={cancelEditSiswa} style={{ background: "#6b7280", color: "white", border: "none", padding: "4px 10px", borderRadius: "4px", cursor: "pointer" }}>Cancel</button>
+                                                    </td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td>{p.login}</td>
+                                                    <td>{p.namaProgram}</td>
+                                                    <td>{p.batch || "-"}</td>
+                                                    <td style={{ whiteSpace: "nowrap" }}>
+                                                        <button onClick={() => startEditSiswa(p)} style={{ background: "#667eea", color: "white", border: "none", padding: "4px 10px", borderRadius: "4px", cursor: "pointer", marginRight: "4px" }}>Edit</button>
+                                                        <button onClick={() => deleteProgramSiswaHandler(p.login)}>Hapus</button>
+                                                    </td>
+                                                </>
+                                            )}
+                                        </tr>
+                                    );
+                                })}</tbody>
                             </table>
                             {getFilteredSiswa().length > ITEMS_PER_PAGE && (
                                 <div className={styles.pagination}>

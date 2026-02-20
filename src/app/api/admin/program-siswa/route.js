@@ -3,7 +3,8 @@ import {
     getAllProgramSiswa,
     saveProgramSiswa,
     deleteProgramSiswa,
-    bulkImportProgramSiswa
+    bulkImportProgramSiswa,
+    updateProgramSiswa
 } from "@/lib/program-store";
 import { adminLimiter, getIP, checkRateLimit } from "@/lib/rate-limiter";
 
@@ -86,5 +87,24 @@ export async function DELETE(request) {
     }
 
     const result = await deleteProgramSiswa(login);
+    return NextResponse.json(result);
+}
+
+/**
+ * PUT /api/admin/program-siswa - Update program siswa fields
+ */
+export async function PUT(request) {
+    if (!verifyAdmin(request)) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { originalLogin, updates } = body;
+
+    if (!originalLogin || !updates) {
+        return NextResponse.json({ error: "originalLogin dan updates wajib diisi" }, { status: 400 });
+    }
+
+    const result = await updateProgramSiswa(originalLogin, updates);
     return NextResponse.json(result);
 }

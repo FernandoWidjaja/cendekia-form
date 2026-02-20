@@ -53,6 +53,10 @@ export default function AdminPage() {
     const [uploadStatus, setUploadStatus] = useState(null);
     const [siswaPage, setSiswaPage] = useState(1);
     const [selectedSiswa, setSelectedSiswa] = useState([]);
+    // Program Siswa filter state
+    const [siswaFilterLogin, setSiswaFilterLogin] = useState("");
+    const [siswaFilterProgram, setSiswaFilterProgram] = useState("");
+    const [siswaFilterBatch, setSiswaFilterBatch] = useState("");
 
     // ScoreDetail state
     const [scoreDetails, setScoreDetails] = useState([]);
@@ -63,8 +67,11 @@ export default function AdminPage() {
     const [scoreFilterLesson, setScoreFilterLesson] = useState("");
     const [scoreFilterGrade, setScoreFilterGrade] = useState("");
     const [scoreFilterCompany, setScoreFilterCompany] = useState(""); // "", "ASM", "NON-ASM"
+    const [scoreFilterProgram, setScoreFilterProgram] = useState("");
     const [scoreSortField, setScoreSortField] = useState("Date");
     const [scoreSortAsc, setScoreSortAsc] = useState(false);
+    // Score Detail edit state
+    const [editingScore, setEditingScore] = useState(null);
 
     // Quiz Excel upload
     const quizExcelInputRef = useRef(null);
@@ -358,6 +365,15 @@ export default function AdminPage() {
         fetchScoreDetails();
     };
 
+    // Helper: filter Program Siswa table
+    const getFilteredSiswa = () => {
+        let filtered = [...programSiswa];
+        if (siswaFilterLogin) filtered = filtered.filter(s => s.login?.toLowerCase().includes(siswaFilterLogin.toLowerCase()));
+        if (siswaFilterProgram) filtered = filtered.filter(s => s.namaProgram === siswaFilterProgram);
+        if (siswaFilterBatch) filtered = filtered.filter(s => s.batch?.toLowerCase().includes(siswaFilterBatch.toLowerCase()));
+        return filtered;
+    };
+
     // Helper function to filter and sort score details
     const getFilteredSortedScores = () => {
         let filtered = [...scoreDetails];
@@ -381,6 +397,10 @@ export default function AdminPage() {
             filtered = filtered.filter(s => s.Company === "ASM");
         } else if (scoreFilterCompany === "NON-ASM") {
             filtered = filtered.filter(s => s.Company !== "ASM");
+        }
+        // Filter by Program
+        if (scoreFilterProgram) {
+            filtered = filtered.filter(s => s.NamaProgram === scoreFilterProgram);
         }
 
         // Apply sort
@@ -412,6 +432,7 @@ export default function AdminPage() {
         setScoreFilterLesson("");
         setScoreFilterGrade("");
         setScoreFilterCompany("");
+        setScoreFilterProgram("");
         setScorePage(1);
     };
 
@@ -834,6 +855,38 @@ export default function AdminPage() {
         fetchScoreDetails();
     };
 
+    // Score Detail Edit handlers
+    const startEditScore = (score) => setEditingScore({ ...score });
+    const cancelEditScore = () => setEditingScore(null);
+    const saveEditScore = async () => {
+        if (!editingScore) return;
+        try {
+            const res = await fetch("/api/admin/scoredetail", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", Authorization: authHeader },
+                body: JSON.stringify({
+                    login: editingScore.Login,
+                    lesson: editingScore.Lesson,
+                    updates: {
+                        Score: editingScore.Score,
+                        Grade: editingScore.Grade,
+                        NamaProgram: editingScore.NamaProgram,
+                        Batch: editingScore.Batch,
+                    },
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setEditingScore(null);
+                fetchScoreDetails();
+            } else {
+                alert("Gagal update: " + (data.error || "Unknown error"));
+            }
+        } catch (e) {
+            alert("Error: " + e.message);
+        }
+    };
+
     const handleExcelUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -1068,7 +1121,7 @@ export default function AdminPage() {
                                     {selectedPrograms.length > 0 && <button onClick={bulkDeletePrograms} style={{ background: "#dc2626", color: "white", border: "none", padding: "8px 16px", borderRadius: "6px", cursor: "pointer" }}>Hapus {selectedPrograms.length} Terpilih</button>}
                                 </div>
                             </div>
-                            <div className={styles.formRow}><input placeholder="Nama Program Baru" value={newProgram} onChange={(e) => setNewProgram(e.target.value)} /><button onClick={addProgramHandler} className={styles.addBtn}>Tambah</button></div>
+                            <div className={styles.formRow}><input placeholder="Nama Program Baru" value={newProgram} onChange={(e) => setNewProgram(e.target.value)} style={{ flex: 1, minWidth: "300px" }} /><button onClick={addProgramHandler} className={styles.addBtn}>Tambah</button></div>
                             <div className={styles.formGroup}>
                                 <label>Upload Excel (NamaProgram):</label>
                                 <div className={styles.formRow}>
@@ -1122,15 +1175,62 @@ export default function AdminPage() {
                                 {uploadStatus && uploadStatus.loading && <div style={{ color: "#667eea" }}>Uploading...</div>}
                                 {uploadStatus && !uploadStatus.loading && (<div className={uploadStatus.success ? styles.success : styles.error}>{uploadStatus.success ? `Berhasil import ${uploadStatus.imported} data` : `Error: ${uploadStatus.error || uploadStatus.errors?.map(e => `Row ${e.row}: ${e.error}`).join(", ")}`}</div>)}
                             </div>
+
+                            {/* Filter bar for table */}
+                            <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                                <div style={{ flex: "1", minWidth: "200px" }}>
+                                    <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "4px", color: "#6b7280" }}>Filter Login:</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Cari login..."
+                                        value={siswaFilterLogin}
+                                        onChange={(e) => { setSiswaFilterLogin(e.target.value); setSiswaPage(1); }}
+                                        style={{ width: "100%", padding: "8px 12px", border: "2px solid #e5e7eb", borderRadius: "6px" }}
+                                    />
+                                </div>
+                                <div style={{ minWidth: "160px" }}>
+                                    <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "4px", color: "#6b7280" }}>Filter Program:</label>
+                                    <select
+                                        value={siswaFilterProgram}
+                                        onChange={(e) => { setSiswaFilterProgram(e.target.value); setSiswaPage(1); }}
+                                        style={{ width: "100%", padding: "8px 12px", border: "2px solid #e5e7eb", borderRadius: "6px" }}
+                                    >
+                                        <option value="">Semua</option>
+                                        {programs.map((p, i) => <option key={i} value={p.namaProgram}>{p.namaProgram}</option>)}
+                                    </select>
+                                </div>
+                                <div style={{ flex: "1", minWidth: "150px" }}>
+                                    <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "4px", color: "#6b7280" }}>Filter Batch:</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Cari batch..."
+                                        value={siswaFilterBatch}
+                                        onChange={(e) => { setSiswaFilterBatch(e.target.value); setSiswaPage(1); }}
+                                        style={{ width: "100%", padding: "8px 12px", border: "2px solid #e5e7eb", borderRadius: "6px" }}
+                                    />
+                                </div>
+                                {(siswaFilterLogin || siswaFilterProgram || siswaFilterBatch) && (
+                                    <button
+                                        onClick={() => { setSiswaFilterLogin(""); setSiswaFilterProgram(""); setSiswaFilterBatch(""); setSiswaPage(1); }}
+                                        style={{ padding: "8px 16px", background: "#6b7280", color: "white", border: "none", borderRadius: "6px", cursor: "pointer" }}
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
+                            {(siswaFilterLogin || siswaFilterProgram || siswaFilterBatch) && (
+                                <div style={{ fontSize: "0.85rem", color: "#6b7280", marginBottom: "12px" }}>Menampilkan {getFilteredSiswa().length} dari {programSiswa.length} data</div>
+                            )}
+
                             <table className={styles.table}>
-                                <thead><tr><th><input type="checkbox" checked={selectedSiswa.length === programSiswa.length && programSiswa.length > 0} onChange={(e) => setSelectedSiswa(e.target.checked ? programSiswa.map(p => p.login) : [])} /></th><th>Login</th><th>Nama Program</th><th>Batch</th><th>Aksi</th></tr></thead>
-                                <tbody>{paginate(programSiswa, siswaPage).map((p, i) => (<tr key={i}><td><input type="checkbox" checked={selectedSiswa.includes(p.login)} onChange={(e) => setSelectedSiswa(e.target.checked ? [...selectedSiswa, p.login] : selectedSiswa.filter(x => x !== p.login))} /></td><td>{p.login}</td><td>{p.namaProgram}</td><td>{p.batch || "-"}</td><td><button onClick={() => deleteProgramSiswaHandler(p.login)}>Hapus</button></td></tr>))}</tbody>
+                                <thead><tr><th><input type="checkbox" checked={selectedSiswa.length === getFilteredSiswa().length && getFilteredSiswa().length > 0} onChange={(e) => setSelectedSiswa(e.target.checked ? getFilteredSiswa().map(p => p.login) : [])} /></th><th>Login</th><th>Nama Program</th><th>Batch</th><th>Aksi</th></tr></thead>
+                                <tbody>{paginate(getFilteredSiswa(), siswaPage).map((p, i) => (<tr key={i}><td><input type="checkbox" checked={selectedSiswa.includes(p.login)} onChange={(e) => setSelectedSiswa(e.target.checked ? [...selectedSiswa, p.login] : selectedSiswa.filter(x => x !== p.login))} /></td><td>{p.login}</td><td>{p.namaProgram}</td><td>{p.batch || "-"}</td><td><button onClick={() => deleteProgramSiswaHandler(p.login)}>Hapus</button></td></tr>))}</tbody>
                             </table>
-                            {programSiswa.length > ITEMS_PER_PAGE && (
+                            {getFilteredSiswa().length > ITEMS_PER_PAGE && (
                                 <div className={styles.pagination}>
                                     <button disabled={siswaPage === 1} onClick={() => setSiswaPage(p => p - 1)}>« Prev</button>
-                                    <span>Halaman {siswaPage} dari {getTotalPages(programSiswa)}</span>
-                                    <button disabled={siswaPage >= getTotalPages(programSiswa)} onClick={() => setSiswaPage(p => p + 1)}>Next »</button>
+                                    <span>Halaman {siswaPage} dari {getTotalPages(getFilteredSiswa())}</span>
+                                    <button disabled={siswaPage >= getTotalPages(getFilteredSiswa())} onClick={() => setSiswaPage(p => p + 1)}>Next »</button>
                                 </div>
                             )}
                         </section>
@@ -1203,7 +1303,20 @@ export default function AdminPage() {
                                         <option value="NON-ASM">Non-ASM</option>
                                     </select>
                                 </div>
-                                {(scoreFilterLogin || scoreFilterLesson || scoreFilterGrade || scoreFilterCompany) && (
+                                <div style={{ minWidth: "160px" }}>
+                                    <label style={{ display: "block", fontSize: "0.85rem", marginBottom: "4px", color: "#6b7280" }}>Program:</label>
+                                    <select
+                                        value={scoreFilterProgram}
+                                        onChange={(e) => { setScoreFilterProgram(e.target.value); setScorePage(1); }}
+                                        style={{ width: "100%", padding: "8px 12px", border: "2px solid #e5e7eb", borderRadius: "6px" }}
+                                    >
+                                        <option value="">Semua</option>
+                                        {[...new Set(scoreDetails.map(s => s.NamaProgram).filter(Boolean))].sort().map((p, i) => (
+                                            <option key={i} value={p}>{p}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {(scoreFilterLogin || scoreFilterLesson || scoreFilterGrade || scoreFilterCompany || scoreFilterProgram) && (
                                     <button
                                         onClick={clearScoreFilters}
                                         style={{ padding: "8px 16px", background: "#6b7280", color: "white", border: "none", borderRadius: "6px", cursor: "pointer" }}
@@ -1264,27 +1377,62 @@ export default function AdminPage() {
                                 <>
                                     <table className={styles.table}>
                                         <thead><tr><th><input type="checkbox" checked={selectedScores.length === getFilteredSortedScores().length && getFilteredSortedScores().length > 0} onChange={(e) => setSelectedScores(e.target.checked ? getFilteredSortedScores().map(s => `${s.Login}|||${s.Lesson}`) : [])} /></th><th>Date</th><th>Time</th><th>Login</th><th>Lesson</th><th>Score</th><th>Grade</th><th>Program</th><th>Batch</th><th>Aksi</th></tr></thead>
-                                        <tbody>{paginate(getFilteredSortedScores(), scorePage).map((s, i) => (
-                                            <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb" }}>
-                                                <td><input type="checkbox" checked={selectedScores.includes(`${s.Login}|||${s.Lesson}`)} onChange={(e) => setSelectedScores(e.target.checked ? [...selectedScores, `${s.Login}|||${s.Lesson}`] : selectedScores.filter(x => x !== `${s.Login}|||${s.Lesson}`))} /></td>
-                                                <td>{s.Date}</td>
-                                                <td>{s.SubmitTime}</td>
-                                                <td style={{ maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis" }}>{s.Login}</td>
-                                                <td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }} title={s.Lesson}>{s.Lesson}</td>
-                                                <td><strong>{s.Score}</strong></td>
-                                                <td><span style={{
-                                                    padding: "2px 8px",
-                                                    borderRadius: "4px",
-                                                    fontSize: "0.8rem",
-                                                    fontWeight: "600",
-                                                    background: s.Grade === "A+" || s.Grade === "A" ? "#d1fae5" : s.Grade === "B" ? "#dbeafe" : s.Grade === "C" ? "#fef3c7" : "#fee2e2",
-                                                    color: s.Grade === "A+" || s.Grade === "A" ? "#047857" : s.Grade === "B" ? "#1d4ed8" : s.Grade === "C" ? "#b45309" : "#dc2626"
-                                                }}>{s.Grade || s.Description}</span></td>
-                                                <td>{s.NamaProgram}</td>
-                                                <td>{s.Batch}</td>
-                                                <td><button onClick={() => deleteScoreDetailHandler(s.Login, s.Lesson)}>Hapus</button></td>
-                                            </tr>
-                                        ))}</tbody>
+                                        <tbody>{paginate(getFilteredSortedScores(), scorePage).map((s, i) => {
+                                            const isEditing = editingScore && editingScore.Login === s.Login && editingScore.Lesson === s.Lesson;
+                                            return (
+                                                <tr key={i} style={{ background: isEditing ? "#fffbeb" : i % 2 === 0 ? "#fff" : "#f9fafb" }}>
+                                                    <td><input type="checkbox" checked={selectedScores.includes(`${s.Login}|||${s.Lesson}`)} onChange={(e) => setSelectedScores(e.target.checked ? [...selectedScores, `${s.Login}|||${s.Lesson}`] : selectedScores.filter(x => x !== `${s.Login}|||${s.Lesson}`))} /></td>
+                                                    <td>{s.Date}</td>
+                                                    <td>{s.SubmitTime}</td>
+                                                    <td style={{ maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis" }}>{s.Login}</td>
+                                                    <td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }} title={s.Lesson}>{s.Lesson}</td>
+                                                    {isEditing ? (
+                                                        <>
+                                                            <td><input type="number" value={editingScore.Score} onChange={(e) => setEditingScore({ ...editingScore, Score: parseInt(e.target.value) || 0 })} style={{ width: "60px", padding: "4px 6px", border: "2px solid #667eea", borderRadius: "4px" }} /></td>
+                                                            <td>
+                                                                <select value={editingScore.Grade} onChange={(e) => setEditingScore({ ...editingScore, Grade: e.target.value })} style={{ padding: "4px 6px", border: "2px solid #667eea", borderRadius: "4px" }}>
+                                                                    <option value="A+">A+</option>
+                                                                    <option value="A">A</option>
+                                                                    <option value="B">B</option>
+                                                                    <option value="C">C</option>
+                                                                    <option value="D">D</option>
+                                                                    <option value="E">E</option>
+                                                                </select>
+                                                            </td>
+                                                            <td>
+                                                                <select value={editingScore.NamaProgram || ""} onChange={(e) => setEditingScore({ ...editingScore, NamaProgram: e.target.value })} style={{ padding: "4px 6px", border: "2px solid #667eea", borderRadius: "4px", maxWidth: "120px" }}>
+                                                                    <option value="">--</option>
+                                                                    {programs.map((p, pi) => <option key={pi} value={p.namaProgram}>{p.namaProgram}</option>)}
+                                                                </select>
+                                                            </td>
+                                                            <td><input type="text" value={editingScore.Batch || ""} onChange={(e) => setEditingScore({ ...editingScore, Batch: e.target.value })} style={{ width: "100px", padding: "4px 6px", border: "2px solid #667eea", borderRadius: "4px" }} /></td>
+                                                            <td style={{ whiteSpace: "nowrap" }}>
+                                                                <button onClick={saveEditScore} style={{ background: "#10b981", color: "white", border: "none", padding: "4px 10px", borderRadius: "4px", cursor: "pointer", marginRight: "4px" }}>Save</button>
+                                                                <button onClick={cancelEditScore} style={{ background: "#6b7280", color: "white", border: "none", padding: "4px 10px", borderRadius: "4px", cursor: "pointer" }}>Cancel</button>
+                                                            </td>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <td><strong>{s.Score}</strong></td>
+                                                            <td><span style={{
+                                                                padding: "2px 8px",
+                                                                borderRadius: "4px",
+                                                                fontSize: "0.8rem",
+                                                                fontWeight: "600",
+                                                                background: s.Grade === "A+" || s.Grade === "A" ? "#d1fae5" : s.Grade === "B" ? "#dbeafe" : s.Grade === "C" ? "#fef3c7" : "#fee2e2",
+                                                                color: s.Grade === "A+" || s.Grade === "A" ? "#047857" : s.Grade === "B" ? "#1d4ed8" : s.Grade === "C" ? "#b45309" : "#dc2626"
+                                                            }}>{s.Grade || s.Description}</span></td>
+                                                            <td>{s.NamaProgram}</td>
+                                                            <td>{s.Batch}</td>
+                                                            <td style={{ whiteSpace: "nowrap" }}>
+                                                                <button onClick={() => startEditScore(s)} style={{ background: "#667eea", color: "white", border: "none", padding: "4px 10px", borderRadius: "4px", cursor: "pointer", marginRight: "4px" }}>Edit</button>
+                                                                <button onClick={() => deleteScoreDetailHandler(s.Login, s.Lesson)}>Hapus</button>
+                                                            </td>
+                                                        </>
+                                                    )}
+                                                </tr>
+                                            );
+                                        })}</tbody>
                                     </table>
                                     {getFilteredSortedScores().length > ITEMS_PER_PAGE && (
                                         <div className={styles.pagination}>

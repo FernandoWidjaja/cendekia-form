@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllScoreDetails, deleteScoreDetail } from "@/lib/program-store";
+import { getAllScoreDetails, deleteScoreDetail, updateScoreDetail } from "@/lib/program-store";
 import { adminLimiter, getIP, checkRateLimit } from "@/lib/rate-limiter";
 
 // Admin credentials
@@ -53,5 +53,24 @@ export async function DELETE(request) {
     }
 
     const result = await deleteScoreDetail(login, lesson);
+    return NextResponse.json(result);
+}
+
+/**
+ * PUT /api/admin/scoredetail - Update ScoreDetail fields
+ */
+export async function PUT(request) {
+    if (!verifyAdmin(request)) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const { login, lesson, updates } = body;
+
+    if (!login || !lesson || !updates) {
+        return NextResponse.json({ error: "login, lesson, dan updates wajib diisi" }, { status: 400 });
+    }
+
+    const result = await updateScoreDetail(login, lesson, updates);
     return NextResponse.json(result);
 }

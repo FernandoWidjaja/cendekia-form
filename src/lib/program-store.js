@@ -226,6 +226,34 @@ export async function deleteScoreDetail(login, lesson) {
 }
 
 /**
+ * Update ScoreDetail fields by Login and Lesson
+ * @param {string} login - User login
+ * @param {string} lesson - Original lesson name (used as identifier)
+ * @param {object} updates - Fields to update (Score, Grade, NamaProgram, Batch, etc.)
+ */
+export async function updateScoreDetail(login, lesson, updates) {
+    try {
+        const allScores = await redis.get("scoredetails:all") || [];
+        const loginUpper = login.toUpperCase();
+        const index = allScores.findIndex(
+            s => s.Login === loginUpper && s.Lesson === lesson
+        );
+
+        if (index < 0) {
+            return { success: false, error: "Score not found" };
+        }
+
+        // Merge updates into existing score
+        allScores[index] = { ...allScores[index], ...updates };
+        await redis.set("scoredetails:all", allScores);
+        return { success: true };
+    } catch (error) {
+        console.error("updateScoreDetail error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Update Pega sync status for a score - OPTIMIZED: updates in array
  * @param {string} login - User login
  * @param {string} lesson - Lesson name

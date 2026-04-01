@@ -1108,6 +1108,16 @@ export default function AdminPage() {
         XLSX.writeFile(wb, "template_program_siswa.xlsx");
     };
 
+    const downloadScoreTemplate = () => {
+        const template = [
+            { Login: "kristinhhanna@gmail.com", Batch: "PDA BATCH 11", EvaluationYearSequence: "2", NamaProgram: "RSN", Section: "KURIKULUM INDEPENDEN", Lesson: "PRODUCT KNOWLEDGE: SIMAS RUKO (2)", Score: "100", Date: "20251219", SubmitTime: "03:17:50", Description: "LULUS DENGAN MEMUASKAN", isASM: "false" }
+        ];
+        const ws = XLSX.utils.json_to_sheet(template);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Template");
+        XLSX.writeFile(wb, "template_score_detail.xlsx");
+    };
+
     const formatDateTime = (dateStr) => {
         if (!dateStr) return "-";
         const d = new Date(dateStr);
@@ -1449,6 +1459,7 @@ export default function AdminPage() {
                                 <div className={styles.actionBtns}>
                                     <input type="file" accept=".xlsx,.xls,.csv" ref={scoreUploadRef} style={{ display: "none" }} onChange={handleScoreUpload} />
                                     <button onClick={() => scoreUploadRef.current?.click()} className={styles.addBtn} style={{ background: "#10b981" }}>📤 Upload Excel</button>
+                                    <button onClick={downloadScoreTemplate} className={styles.addBtn}>Download Template</button>
                                     <button onClick={() => {
                                         const ws = XLSX.utils.json_to_sheet(getFilteredSortedScores());
                                         const wb = XLSX.utils.book_new();

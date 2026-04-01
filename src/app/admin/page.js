@@ -74,6 +74,9 @@ export default function AdminPage() {
     const [scoreSortAsc, setScoreSortAsc] = useState(false);
     // Score Detail edit state
     const [editingScore, setEditingScore] = useState(null);
+    // Score Detail upload
+    const scoreUploadRef = useRef(null);
+    const [scoreUploadStatus, setScoreUploadStatus] = useState(null);
 
     // Quiz Excel upload
     const quizExcelInputRef = useRef(null);
@@ -104,6 +107,20 @@ export default function AdminPage() {
     const [emailFilterScoreMin, setEmailFilterScoreMin] = useState("");
     const [emailFilterScoreMax, setEmailFilterScoreMax] = useState("");
     const [emailFilterStatus, setEmailFilterStatus] = useState(""); // "", "lulus", "tidak_lulus"
+
+    // Curriculum Monitoring state
+    const [curriculumData, setCurriculumData] = useState([]);
+    const [curriculumQuizNames, setCurriculumQuizNames] = useState([]);
+    const [curriculumSummary, setCurriculumSummary] = useState({ totalStudents: 0, avgCompletion: 0, avgScore: 0 });
+    const [curriculumLoading, setCurriculumLoading] = useState(false);
+    const [curriculumYearFilter, setCurriculumYearFilter] = useState(0);
+    const [curriculumSearch, setCurriculumSearch] = useState("");
+    const [curriculumPage, setCurriculumPage] = useState(1);
+    const [curriculumExporting, setCurriculumExporting] = useState(false);
+    const [ehcSyncing, setEhcSyncing] = useState(false);
+    const [ehcSyncResult, setEhcSyncResult] = useState(null);
+
+    // Pega Upload state removed per request
 
     // Items per page
     const ITEMS_PER_PAGE = 10;
@@ -255,6 +272,80 @@ export default function AdminPage() {
         } catch (e) { console.error(e); }
     };
 
+    // Curriculum Monitoring functions
+    const fetchCurriculumData = async (year, search) => {
+        setCurriculumLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (year) params.set("year", year);
+            if (search) params.set("search", search);
+            const res = await fetch(`/api/admin/curriculum-monitoring?${params}`, {
+                headers: { Authorization: authHeader },
+            });
+            const data = await res.json();
+            if (data.success) {
+                setCurriculumData(data.data || []);
+                setCurriculumQuizNames(data.quizNames || []);
+                setCurriculumSummary(data.summary || { totalStudents: 0, avgCompletion: 0, avgScore: 0 });
+            }
+        } catch (e) { console.error(e); }
+        setCurriculumLoading(false);
+    };
+
+    const exportCurriculumExcel = async () => {
+        setCurriculumExporting(true);
+        try {
+            const params = new URLSearchParams();
+            if (curriculumYearFilter) params.set("year", curriculumYearFilter);
+            if (curriculumSearch) params.set("search", curriculumSearch);
+            const res = await fetch(`/api/admin/curriculum-export?${params}`, {
+                headers: { Authorization: authHeader },
+            });
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `curriculum_monitoring_${new Date().toISOString().split("T")[0]}.xlsx`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error(e);
+            alert("Export gagal: " + e.message);
+        }
+        setCurriculumExporting(false);
+    };
+
+    const performSyncLoop = async () => {
+        try {
+            const res = await fetch(`/api/admin/program-siswa/sync-ehc`, {
+                method: "POST",
+                headers: { Authorization: authHeader },
+            });
+            const data = await res.json();
+            setEhcSyncResult(data);
+            
+            if (data.success && data.remaining > 0) {
+                // Keep looping if there are remaining records
+                await performSyncLoop();
+            } else {
+                if (data.success) fetchCurriculumData(curriculumYearFilter, curriculumSearch);
+                setEhcSyncing(false);
+            }
+        } catch (e) {
+            setEhcSyncResult({ success: false, error: e.message });
+            setEhcSyncing(false);
+        }
+    };
+
+    const runEhcSync = async () => {
+        if (!confirm("Proses ini akan mengambil data Jabatan dan Masa Pelatihan dari EHC untuk siswa yang datanya masih kosong.\nBisa memakan waktu beberapa menit. Lanjutkan?")) return;
+        setEhcSyncing(true);
+        setEhcSyncResult(null);
+        await performSyncLoop();
+    };
+
+    // Pega Upload functions removed
+
     useEffect(() => {
         if (isLoggedIn) {
             fetchQuizzes();
@@ -365,6 +456,53 @@ export default function AdminPage() {
         }
         setSelectedScores([]);
         fetchScoreDetails();
+    };
+
+    // Score Detail Upload handler
+    const handleScoreUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setScoreUploadStatus({ type: "loading", message: "Membaca file..." });
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const wb = XLSX.read(evt.target.result, { type: "binary" });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(ws);
+
+                if (rows.length === 0) {
+                    setScoreUploadStatus({ type: "error", message: "File kosong atau format salah." });
+                    return;
+                }
+
+                setScoreUploadStatus({ type: "loading", message: `Mengupload ${rows.length} data...` });
+
+                const res = await fetch("/api/admin/scoredetail", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: authHeader },
+                    body: JSON.stringify({ bulk: rows }),
+                });
+                const data = await res.json();
+
+                if (data.success || data.imported > 0) {
+                    setScoreUploadStatus({
+                        type: "success",
+                        message: `Berhasil import ${data.imported} dari ${data.total} data.${data.errors?.length ? ` (${data.errors.length} error)` : ""}`,
+                    });
+                    fetchScoreDetails();
+                } else {
+                    setScoreUploadStatus({
+                        type: "error",
+                        message: `Gagal import. ${data.errors?.[0]?.error || data.error || "Unknown error"}`,
+                    });
+                }
+            } catch (err) {
+                setScoreUploadStatus({ type: "error", message: `Error: ${err.message}` });
+            }
+        };
+        reader.readAsBinaryString(file);
+        e.target.value = "";
     };
 
     // Helper: filter Program Siswa table
@@ -1017,6 +1155,7 @@ export default function AdminPage() {
                     <button className={activeTab === "scores" ? styles.tabActive : styles.tab} onClick={() => setActiveTab("scores")}>Score Detail</button>
                     <button className={activeTab === "mitra" ? styles.tabActive : styles.tab} onClick={() => setActiveTab("mitra")}>Master Mitra</button>
                     <button className={activeTab === "pega" ? styles.tabActive : styles.tab} onClick={() => setActiveTab("pega")}>Sync Pega</button>
+                    <button className={activeTab === "curriculum" ? styles.tabActive : styles.tab} onClick={() => { setActiveTab("curriculum"); fetchCurriculumData(curriculumYearFilter, curriculumSearch); }}>📊 Monitoring</button>
                 </div>
 
                 {activeTab === "quiz" && (
@@ -1308,6 +1447,8 @@ export default function AdminPage() {
                             <div className={styles.sectionHeader}>
                                 <h2>Score Detail ({getFilteredSortedScores().length} dari {scoreDetails.length})</h2>
                                 <div className={styles.actionBtns}>
+                                    <input type="file" accept=".xlsx,.xls,.csv" ref={scoreUploadRef} style={{ display: "none" }} onChange={handleScoreUpload} />
+                                    <button onClick={() => scoreUploadRef.current?.click()} className={styles.addBtn} style={{ background: "#10b981" }}>📤 Upload Excel</button>
                                     <button onClick={() => {
                                         const ws = XLSX.utils.json_to_sheet(getFilteredSortedScores());
                                         const wb = XLSX.utils.book_new();
@@ -1316,6 +1457,22 @@ export default function AdminPage() {
                                     }} className={styles.addBtn}>Export Excel</button>
                                     {selectedScores.length > 0 && <button onClick={bulkDeleteScores} style={{ background: "#dc2626", color: "white", border: "none", padding: "8px 16px", borderRadius: "6px", cursor: "pointer" }}>Hapus {selectedScores.length} Terpilih</button>}
                                 </div>
+                                {scoreUploadStatus && (
+                                    <div style={{
+                                        marginTop: "8px",
+                                        padding: "10px 16px",
+                                        borderRadius: "8px",
+                                        fontSize: "0.9rem",
+                                        background: scoreUploadStatus.type === "success" ? "#d1fae5" : scoreUploadStatus.type === "error" ? "#fee2e2" : "#dbeafe",
+                                        color: scoreUploadStatus.type === "success" ? "#065f46" : scoreUploadStatus.type === "error" ? "#991b1b" : "#1e40af",
+                                    }}>
+                                        {scoreUploadStatus.type === "loading" ? "⏳ " : scoreUploadStatus.type === "success" ? "✅ " : "❌ "}
+                                        {scoreUploadStatus.message}
+                                        {scoreUploadStatus.type !== "loading" && (
+                                            <button onClick={() => setScoreUploadStatus(null)} style={{ marginLeft: "12px", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", color: "inherit" }}>Tutup</button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Filter Bar */}
@@ -1693,6 +1850,183 @@ export default function AdminPage() {
                         </section>
                     </div>
                 )}
+                {activeTab === "curriculum" && (
+                    <div className={styles.content}>
+                        <section className={styles.section}>
+                            <div className={styles.sectionHeader}>
+                                <h2>📊 Curriculum Monitoring</h2>
+                                <div className={styles.actionBtns}>
+                                    <button
+                                        onClick={runEhcSync}
+                                        disabled={ehcSyncing}
+                                        className={styles.addBtn}
+                                        style={{ background: "#4f46e5" }}
+                                    >
+                                        {ehcSyncing ? "Syncing..." : "🔄 Sync EHC Data"}
+                                    </button>
+                                    <button
+                                        onClick={exportCurriculumExcel}
+                                        disabled={curriculumExporting}
+                                        className={styles.addBtn}
+                                    >
+                                        {curriculumExporting ? "Exporting..." : "📥 Export Excel"}
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            {/* Sync Status */}
+                            {ehcSyncResult && (
+                                <div style={{ marginBottom: "20px", padding: "12px", borderRadius: "8px", background: ehcSyncResult.success ? "#d1fae5" : "#fee2e2", color: ehcSyncResult.success ? "#059669" : "#dc2626" }}>
+                                    {ehcSyncResult.message || ehcSyncResult.error}
+                                </div>
+                            )}
+
+                            {/* Filter Bar */}
+                            <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                                <div style={{ flex: 1, minWidth: "200px" }}>
+                                    <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "0.85rem", color: "#374151" }}>🔍 Cari Siswa</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Nama, Login, Program, Batch..."
+                                        value={curriculumSearch}
+                                        onChange={(e) => setCurriculumSearch(e.target.value)}
+                                        onKeyDown={(e) => { if (e.key === "Enter") { setCurriculumPage(1); fetchCurriculumData(curriculumYearFilter, curriculumSearch); } }}
+                                        style={{ width: "100%", padding: "10px 14px", border: "2px solid #e0e0e0", borderRadius: "8px", fontSize: "0.95rem" }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "0.85rem", color: "#374151" }}>📅 Masa Pelatihan</label>
+                                    <div style={{ display: "flex", gap: "6px" }}>
+                                        {[{ val: 0, label: "Semua" }, { val: 1, label: "Tahun 1" }, { val: 2, label: "Tahun 2" }, { val: 3, label: "Tahun 3" }].map(opt => (
+                                            <button
+                                                key={opt.val}
+                                                onClick={() => { setCurriculumYearFilter(opt.val); setCurriculumPage(1); fetchCurriculumData(opt.val, curriculumSearch); }}
+                                                style={{
+                                                    padding: "8px 16px",
+                                                    border: "2px solid",
+                                                    borderColor: curriculumYearFilter === opt.val ? "#667eea" : "#e0e0e0",
+                                                    borderRadius: "8px",
+                                                    cursor: "pointer",
+                                                    background: curriculumYearFilter === opt.val ? "#667eea" : "white",
+                                                    color: curriculumYearFilter === opt.val ? "white" : "#374151",
+                                                    fontWeight: 600,
+                                                    fontSize: "0.85rem",
+                                                }}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => { setCurriculumPage(1); fetchCurriculumData(curriculumYearFilter, curriculumSearch); }}
+                                    style={{ padding: "10px 20px", background: "#667eea", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: 600 }}
+                                >
+                                    🔄 Refresh
+                                </button>
+                            </div>
+
+                            {/* Summary Cards */}
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+                                <div style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", borderRadius: "12px", padding: "20px", color: "white" }}>
+                                    <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>Total Siswa</div>
+                                    <div style={{ fontSize: "2rem", fontWeight: 700 }}>{curriculumSummary.totalStudents}</div>
+                                </div>
+                                <div style={{ background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)", borderRadius: "12px", padding: "20px", color: "white" }}>
+                                    <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>Avg Completion</div>
+                                    <div style={{ fontSize: "2rem", fontWeight: 700 }}>{curriculumSummary.avgCompletion}%</div>
+                                </div>
+                                <div style={{ background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)", borderRadius: "12px", padding: "20px", color: "white" }}>
+                                    <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>Avg Score</div>
+                                    <div style={{ fontSize: "2rem", fontWeight: 700 }}>{curriculumSummary.avgScore}</div>
+                                </div>
+                                <div style={{ background: "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)", borderRadius: "12px", padding: "20px", color: "white" }}>
+                                    <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>Total Quiz</div>
+                                    <div style={{ fontSize: "2rem", fontWeight: 700 }}>{curriculumQuizNames.length}</div>
+                                </div>
+                            </div>
+
+                            {/* Data Table */}
+                            {curriculumLoading ? (
+                                <p style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>⏳ Loading data...</p>
+                            ) : curriculumData.length === 0 ? (
+                                <p style={{ textAlign: "center", padding: "40px", color: "#6b7280" }}>Tidak ada data. Klik "Refresh" untuk memuat.</p>
+                            ) : (
+                                <>
+                                    <div style={{ overflowX: "auto", borderRadius: "8px", border: "1px solid #e0e0e0" }}>
+                                        <table className={styles.table} style={{ minWidth: `1400px`, width: "100%" }}>
+                                            <thead>
+                                                <tr>
+                                                    <th style={{ position: "sticky", left: 0, background: "#f7f7f7", zIndex: 2, minWidth: "50px" }}>No</th>
+                                                    <th style={{ position: "sticky", left: "50px", background: "#f7f7f7", zIndex: 2, minWidth: "180px" }}>Nama</th>
+                                                    <th style={{ minWidth: "200px" }}>Login</th>
+                                                    <th style={{ minWidth: "140px" }}>Program Siswa</th>
+                                                    <th style={{ minWidth: "120px" }}>Batch</th>
+                                                    <th style={{ minWidth: "140px" }}>ASM Leader</th>
+                                                    <th style={{ minWidth: "120px" }}>Tanggal Masuk</th>
+                                                    <th style={{ minWidth: "110px" }}>Masa Pelatihan</th>
+                                                    <th style={{ minWidth: "90px" }}>Lulus KI</th>
+                                                    <th style={{ minWidth: "100px" }}>Tidak Lulus KI</th>
+                                                    <th style={{ minWidth: "150px" }}>Persentase Keikutsertaan</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {paginate(curriculumData, curriculumPage).map((row, idx) => (
+                                                    <tr key={idx}>
+                                                        <td style={{ position: "sticky", left: 0, background: "white", zIndex: 1 }}>{(curriculumPage - 1) * ITEMS_PER_PAGE + idx + 1}</td>
+                                                        <td style={{ position: "sticky", left: "50px", background: "white", zIndex: 1, fontWeight: 600 }}>{row.nama}</td>
+                                                        <td><span style={{ fontSize: "0.85rem", color: "#6b7280" }}>{row.login}</span></td>
+                                                        <td>{row.programSiswa}</td>
+                                                        <td>{row.batch}</td>
+                                                        <td><span style={{ fontSize: "0.85rem", color: "#6b7280" }}>{row.asmLeaderName}</span></td>
+                                                        <td><span style={{ fontSize: "0.85rem", color: "#6b7280", fontWeight: 500 }}>{row.tanggalMasuk}</span></td>
+                                                        <td>
+                                                            <span style={{
+                                                                padding: "4px 10px",
+                                                                borderRadius: "20px",
+                                                                fontSize: "0.8rem",
+                                                                fontWeight: 600,
+                                                                background: row.tenure.year === 1 ? "#dbeafe" : row.tenure.year === 2 ? "#fef3c7" : row.tenure.year === 3 ? "#fce7f3" : "#f3f4f6",
+                                                                color: row.tenure.year === 1 ? "#1d4ed8" : row.tenure.year === 2 ? "#b45309" : row.tenure.year === 3 ? "#be185d" : "#6b7280",
+                                                            }}>
+                                                                {row.tenure.label}
+                                                            </span>
+                                                        </td>
+                                                        <td style={{ fontWeight: 600, color: row.quizzesPassed > 0 ? "#059669" : "#9ca3af" }}>
+                                                            {row.quizzesPassed > 0 ? `${row.quizzesPassed} Modul` : "-"}
+                                                        </td>
+                                                        <td style={{ fontWeight: 600, color: row.quizzesFailed > 0 ? "#dc2626" : "#9ca3af" }}>
+                                                            {row.quizzesFailed > 0 ? `${row.quizzesFailed} Modul` : "-"}
+                                                        </td>
+                                                        <td>
+                                                            <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: "120px" }}>
+                                                                <div style={{ flex: 1, height: "8px", background: "#e5e7eb", borderRadius: "4px", overflow: "hidden" }}>
+                                                                    <div style={{ width: `${row.completionPct}%`, height: "100%", background: row.completionPct >= 80 ? "#10b981" : row.completionPct >= 40 ? "#f59e0b" : "#ef4444", borderRadius: "4px", transition: "width 0.3s" }} />
+                                                                </div>
+                                                                <span style={{ fontSize: "0.75rem", fontWeight: 600, minWidth: "40px" }}>{row.completionPct}%</span>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div className={styles.pagination}>
+                                        <button disabled={curriculumPage === 1} onClick={() => setCurriculumPage(p => p - 1)}>« Prev</button>
+                                        <span>Halaman {curriculumPage} dari {getTotalPages(curriculumData)} ({curriculumData.length} siswa)</span>
+                                        <button disabled={curriculumPage >= getTotalPages(curriculumData)} onClick={() => setCurriculumPage(p => p + 1)}>Next »</button>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Legend */}
+                            <div style={{ marginTop: "16px", padding: "12px", background: "#f9fafb", borderRadius: "8px", fontSize: "0.8rem", color: "#6b7280" }}>
+                                <strong>Keterangan:</strong> Modul Lulus (Score ≥ 60), Tidak Lulus (Score &lt; 60). Masa Pelatihan dan Tanggal Masuk dibaca dari EHC. Jika Kosong / N/A, gunakan fitur "Sync EHC Data".
+                            </div>
+                        </section>
+                    </div>
+                )}
+                
             </div>
         </main>
     );

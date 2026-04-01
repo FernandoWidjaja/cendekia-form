@@ -4,7 +4,7 @@
  */
 
 // API URLs - each endpoint has its own full URL
-const EHC_GETDATA_URL = process.env.EHC_BASE_URL || "https://hcq.payrollq.id/prweb/api/EHC/v1/GetDataEHC";
+const EHC_GETDATA_URL = process.env.EHC_BASE_URL ? `${process.env.EHC_BASE_URL}/GetDataEHC` : "https://hcq.payrollq.id/prweb/api/EHC/v1/GetDataEHC";
 const EHC_VALPASS_URL = process.env.EHC_VALPASS_URL || "http://hcq.payrollq.id/prweb/api/EHC/v1/ValEmpPass";
 const MASTER_SISWA_URL = process.env.MASTER_SISWA_URL || "http://hcq.payrollq.id/prweb/api/EHC/v01/MasterSISWA";
 
@@ -135,6 +135,7 @@ export async function getEmployeeData(loginEmail) {
                 Login: career.Login || person.Login || "",
                 GradeCode: career.GradeCode || "",
                 BranchName: career.BranchName || "",
+                ASMLeaderName: career.ASMLeaderName || career.ASMLeaderAlias || career.LeaderName || "",
                 EffectiveDate: career.EffectiveDate || "",
             };
         } catch (error) {

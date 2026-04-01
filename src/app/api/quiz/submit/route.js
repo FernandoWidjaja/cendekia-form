@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getQuiz, calculateScore, saveAttempt, getAttempt } from "@/lib/quiz-store";
-import { getProgramSiswaByLogin, saveScoreDetail } from "@/lib/program-store";
+import { getQuiz, calculateScore } from "@/lib/quiz-store";
+import { getProgramSiswaByLogin, saveScoreDetail, getCompletedQuiz } from "@/lib/program-store";
 
 /**
  * Calculate EvaluationYearSequence from EffectiveDate
@@ -35,6 +35,8 @@ function calculateEvaluationYear(effectiveDateStr) {
  * POST /api/quiz/submit
  * Submit quiz answers and calculate score
  * Body: { lessonName, answers, login, userData }
+ * 
+ * A2: Attempts eliminated — duplicate check uses ScoreDetail directly
  */
 export async function POST(request) {
     try {
@@ -48,12 +50,16 @@ export async function POST(request) {
             );
         }
 
-        // Check if already attempted
-        const existingAttempt = await getAttempt(login, lessonName);
-        if (existingAttempt) {
+        // A2: Check if already completed via ScoreDetail (replaces getAttempt)
+        const existingScore = await getCompletedQuiz(login, lessonName);
+        if (existingScore) {
             return NextResponse.json({
                 error: "Anda sudah mengerjakan quiz ini",
-                existingResult: existingAttempt,
+                existingResult: {
+                    score: existingScore.Score,
+                    grade: existingScore.Grade,
+                    gradeDesc: existingScore.Description,
+                },
             }, { status: 403 });
         }
 
@@ -82,7 +88,7 @@ export async function POST(request) {
         const dateStr = now.toISOString().split("T")[0].replace(/-/g, ""); // YYYYMMDD
         const timeStr = now.toTimeString().split(" ")[0]; // HH:mm:ss
 
-        // Prepare ScoreDetail data (format untuk API nanti)
+        // Prepare ScoreDetail data
         const scoreData = {
             Login: login.toUpperCase(),
             Batch: batch,
@@ -100,18 +106,9 @@ export async function POST(request) {
 
         console.log("ScoreDetail payload:", scoreData);
 
-        // Save to Upstash (with ASM prefix if applicable)
+        // A2: Save ONLY to ScoreDetail (no separate attempt save)
         await saveScoreDetail(scoreData, isASM);
-        console.log("ScoreDetail saved to Upstash", isASM ? "(ASM)" : "");
-
-        // Save attempt to database
-        await saveAttempt(login, lessonName, {
-            score: result.score,
-            grade: result.grade,
-            gradeDesc: result.gradeDesc,
-            correct: result.correct,
-            total: result.total,
-        });
+        console.log("ScoreDetail saved", isASM ? "(ASM)" : "");
 
         return NextResponse.json({
             success: true,

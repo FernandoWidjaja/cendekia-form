@@ -1,16 +1,12 @@
-import { Redis } from "@upstash/redis";
+import redis from "./redis-client";
+import { buildKey, ENTITIES } from "./key-builder";
 
 /**
- * Quiz KV Store Utility Functions using Upstash Redis
+ * Quiz KV Store Utility Functions
  * OPTIMIZED: Uses single key storage to reduce commands
- * Keys: "quizzes:all" for all quizzes, "attempts:LOGIN" for user attempts
+ * UPDATED: Uses centralized key-builder for namespace isolation
+ * A2: Attempts ELIMINATED — quiz completion tracked via ScoreDetail in program-store.js
  */
-
-// Initialize Redis client
-const redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL || "",
-    token: process.env.UPSTASH_REDIS_REST_TOKEN || "",
-});
 
 // ==================== QUIZ STORAGE (OPTIMIZED) ====================
 
@@ -19,7 +15,7 @@ const redis = new Redis({
  */
 export async function getAllQuizzes() {
     try {
-        const quizzes = await redis.get("quizzes:all");
+        const quizzes = await redis.get(buildKey(ENTITIES.QUIZZES));
         return quizzes || [];
     } catch (error) {
         console.error("Redis getAllQuizzes error:", error);
@@ -47,20 +43,20 @@ export async function saveQuiz(lessonName, quizData) {
     try {
         const quizzes = await getAllQuizzes();
         const index = quizzes.findIndex(q => q.lessonName === lessonName);
-        
+
         const quizWithMeta = {
             ...quizData,
             lessonName,
             key: `quiz:${lessonName}`, // Keep for compatibility
         };
-        
+
         if (index >= 0) {
             quizzes[index] = quizWithMeta;
         } else {
             quizzes.push(quizWithMeta);
         }
-        
-        await redis.set("quizzes:all", quizzes);
+
+        await redis.set(buildKey(ENTITIES.QUIZZES), quizzes);
         return true;
     } catch (error) {
         console.error("Redis saveQuiz error:", error);
@@ -75,7 +71,7 @@ export async function deleteQuiz(lessonName) {
     try {
         const quizzes = await getAllQuizzes();
         const filtered = quizzes.filter(q => q.lessonName !== lessonName);
-        await redis.set("quizzes:all", filtered);
+        await redis.set(buildKey(ENTITIES.QUIZZES), filtered);
         return true;
     } catch (error) {
         console.error("Redis deleteQuiz error:", error);
@@ -139,53 +135,7 @@ export function calculateScore(questions, answers) {
     };
 }
 
-// ==================== QUIZ ATTEMPTS (OPTIMIZED) ====================
-
-/**
- * Save quiz attempt for a user - OPTIMIZED: stores per-user object
- */
-export async function saveAttempt(login, lessonName, result) {
-    try {
-        const userKey = `attempts:${login.toUpperCase()}`;
-        const attempts = await redis.get(userKey) || {};
-        
-        attempts[lessonName] = {
-            ...result,
-            completedAt: new Date().toISOString(),
-        };
-        
-        await redis.set(userKey, attempts);
-        return { success: true };
-    } catch (error) {
-        console.error("saveAttempt error:", error);
-        return { success: false, error: error.message };
-    }
-}
-
-/**
- * Get quiz attempt for a user - OPTIMIZED: 1 GET for all attempts
- */
-export async function getAttempt(login, lessonName) {
-    try {
-        const userKey = `attempts:${login.toUpperCase()}`;
-        const attempts = await redis.get(userKey) || {};
-        return attempts[lessonName] || null;
-    } catch (error) {
-        console.error("getAttempt error:", error);
-        return null;
-    }
-}
-
-/**
- * Get multiple attempts for a user - OPTIMIZED: 1 command instead of 1+N
- */
-export async function getUserAttempts(login) {
-    try {
-        const userKey = `attempts:${login.toUpperCase()}`;
-        const attempts = await redis.get(userKey) || {};
-        return attempts;
-    } catch (error) {
-        console.error("getUserAttempts error:", error);
-        return {};
-    }
-}
+// ==================== QUIZ ATTEMPTS — ELIMINATED (A2) ====================
+// Quiz completion is now tracked via ScoreDetail in program-store.js
+// Use getCompletedQuiz(login, lessonName) to check if quiz is done
+// Use getUserCompletedQuizzes(login) to get all completed quizzes for a user

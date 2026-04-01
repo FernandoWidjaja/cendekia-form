@@ -1,21 +1,17 @@
-import { Redis } from "@upstash/redis";
+import redis from "./redis-client";
+import { buildKey, ENTITIES } from "./key-builder";
 
 /**
  * Program Store - CRUD for Master Program, Program Siswa, and ScoreDetail
  * OPTIMIZED: Uses single key storage to reduce commands
+ * UPDATED: Uses centralized key-builder for namespace isolation
  */
 
-const redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL || "",
-    token: process.env.UPSTASH_REDIS_REST_TOKEN || "",
-});
-
 // ==================== MASTER NAMA PROGRAM ====================
-// Already using single key pattern - no changes needed
 
 export async function getAllPrograms() {
     try {
-        const programs = await redis.get("master:programs");
+        const programs = await redis.get(buildKey(ENTITIES.MASTER_PROGRAM));
         return programs || [];
     } catch (error) {
         console.error("getAllPrograms error:", error);
@@ -34,7 +30,7 @@ export async function addProgram(namaProgram) {
         }
 
         programs.push(newProgram);
-        await redis.set("master:programs", programs);
+        await redis.set(buildKey(ENTITIES.MASTER_PROGRAM), programs);
         return { success: true, data: newProgram };
     } catch (error) {
         console.error("addProgram error:", error);
@@ -46,7 +42,7 @@ export async function deleteProgram(id) {
     try {
         const programs = await getAllPrograms();
         const filtered = programs.filter(p => p.id !== id);
-        await redis.set("master:programs", filtered);
+        await redis.set(buildKey(ENTITIES.MASTER_PROGRAM), filtered);
         return { success: true };
     } catch (error) {
         console.error("deleteProgram error:", error);
@@ -55,11 +51,10 @@ export async function deleteProgram(id) {
 }
 
 // ==================== MASTER PROGRAM PER SISWA ====================
-// Already using single key pattern - no changes needed
 
 export async function getAllProgramSiswa() {
     try {
-        const data = await redis.get("master:program-siswa");
+        const data = await redis.get(buildKey(ENTITIES.PROGRAM_SISWA));
         return data || [];
     } catch (error) {
         console.error("getAllProgramSiswa error:", error);
@@ -93,10 +88,32 @@ export async function saveProgramSiswa(login, namaProgram, batch = "") {
             all.push({ login: loginUpper, namaProgram, batch });
         }
 
-        await redis.set("master:program-siswa", all);
+        await redis.set(buildKey(ENTITIES.PROGRAM_SISWA), all);
         return { success: true };
     } catch (error) {
         console.error("saveProgramSiswa error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Update extra properties for program siswa (e.g. from EHC sync)
+ */
+export async function saveProgramSiswaExt(login, extraFields) {
+    try {
+        const all = await getAllProgramSiswa();
+        const loginUpper = login.toUpperCase();
+
+        const index = all.findIndex(p => p.login?.toUpperCase() === loginUpper);
+        if (index >= 0) {
+            // Merge extra fields
+            all[index] = { ...all[index], ...extraFields };
+            await redis.set(buildKey(ENTITIES.PROGRAM_SISWA), all);
+            return { success: true };
+        }
+        return { success: false, error: "Student not found" };
+    } catch (error) {
+        console.error("saveProgramSiswaExt error:", error);
         return { success: false, error: error.message };
     }
 }
@@ -105,7 +122,7 @@ export async function deleteProgramSiswa(login) {
     try {
         const all = await getAllProgramSiswa();
         const filtered = all.filter(p => p.login !== login.toUpperCase());
-        await redis.set("master:program-siswa", filtered);
+        await redis.set(buildKey(ENTITIES.PROGRAM_SISWA), filtered);
         return { success: true };
     } catch (error) {
         console.error("deleteProgramSiswa error:", error);
@@ -132,7 +149,7 @@ export async function updateProgramSiswa(originalLogin, updates) {
         if (updates.namaProgram !== undefined) all[index].namaProgram = updates.namaProgram;
         if (updates.batch !== undefined) all[index].batch = updates.batch;
 
-        await redis.set("master:program-siswa", all);
+        await redis.set(buildKey(ENTITIES.PROGRAM_SISWA), all);
         return { success: true };
     } catch (error) {
         console.error("updateProgramSiswa error:", error);
@@ -171,13 +188,14 @@ export async function bulkImportProgramSiswa(dataArray) {
 // ==================== SCORE DETAIL STORAGE (OPTIMIZED) ====================
 
 /**
- * Save ScoreDetail to Upstash - OPTIMIZED: uses single key array
+ * Save ScoreDetail - OPTIMIZED: uses single key array
  * @param {object} scoreData - Score data to save
  * @param {boolean} isASM - If true, marks as ASM user
  */
 export async function saveScoreDetail(scoreData, isASM = false) {
     try {
-        const allScores = await redis.get("scoredetails:all") || [];
+        const key = buildKey(ENTITIES.SCORE_DETAIL);
+        const allScores = await redis.get(key) || [];
 
         // Create unique key for lookup
         const login = scoreData.Login.toUpperCase();
@@ -201,7 +219,7 @@ export async function saveScoreDetail(scoreData, isASM = false) {
             allScores.push(dataToSave);
         }
 
-        await redis.set("scoredetails:all", allScores);
+        await redis.set(key, allScores);
         return { success: true };
     } catch (error) {
         console.error("saveScoreDetail error:", error);
@@ -214,7 +232,7 @@ export async function saveScoreDetail(scoreData, isASM = false) {
  */
 export async function getAllScoreDetails() {
     try {
-        const scores = await redis.get("scoredetails:all") || [];
+        const scores = await redis.get(buildKey(ENTITIES.SCORE_DETAIL)) || [];
         return scores;
     } catch (error) {
         console.error("getAllScoreDetails error:", error);
@@ -236,15 +254,59 @@ export async function getScoreDetailsByLogin(login) {
 }
 
 /**
+ * Check if a user has completed a specific quiz (A2: replaces getAttempt)
+ * @param {string} login - User login
+ * @param {string} lessonName - Lesson name
+ * @returns {object|null} Score detail if completed, null otherwise
+ */
+export async function getCompletedQuiz(login, lessonName) {
+    try {
+        const all = await getAllScoreDetails();
+        return all.find(
+            s => s.Login === login.toUpperCase() && s.Lesson === lessonName
+        ) || null;
+    } catch (error) {
+        console.error("getCompletedQuiz error:", error);
+        return null;
+    }
+}
+
+/**
+ * Get all completed quizzes for a user (A2: replaces getUserAttempts)
+ * Returns object keyed by lesson name for backward compatibility with frontend
+ * @param {string} login - User login
+ * @returns {object} { lessonName: { score, grade, ... }, ... }
+ */
+export async function getUserCompletedQuizzes(login) {
+    try {
+        const scores = await getScoreDetailsByLogin(login);
+        const result = {};
+        for (const s of scores) {
+            result[s.Lesson] = {
+                score: s.Score,
+                grade: s.Grade,
+                gradeDesc: s.Description,
+                completedAt: s.Date,
+            };
+        }
+        return result;
+    } catch (error) {
+        console.error("getUserCompletedQuizzes error:", error);
+        return {};
+    }
+}
+
+/**
  * Delete ScoreDetail by Login and Lesson
  */
 export async function deleteScoreDetail(login, lesson) {
     try {
-        const allScores = await redis.get("scoredetails:all") || [];
+        const key = buildKey(ENTITIES.SCORE_DETAIL);
+        const allScores = await redis.get(key) || [];
         const filtered = allScores.filter(
             s => !(s.Login === login.toUpperCase() && s.Lesson === lesson)
         );
-        await redis.set("scoredetails:all", filtered);
+        await redis.set(key, filtered);
         return { success: true };
     } catch (error) {
         console.error("deleteScoreDetail error:", error);
@@ -260,7 +322,8 @@ export async function deleteScoreDetail(login, lesson) {
  */
 export async function updateScoreDetail(login, lesson, updates) {
     try {
-        const allScores = await redis.get("scoredetails:all") || [];
+        const key = buildKey(ENTITIES.SCORE_DETAIL);
+        const allScores = await redis.get(key) || [];
         const loginUpper = login.toUpperCase();
         const index = allScores.findIndex(
             s => s.Login === loginUpper && s.Lesson === lesson
@@ -272,7 +335,7 @@ export async function updateScoreDetail(login, lesson, updates) {
 
         // Merge updates into existing score
         allScores[index] = { ...allScores[index], ...updates };
-        await redis.set("scoredetails:all", allScores);
+        await redis.set(key, allScores);
         return { success: true };
     } catch (error) {
         console.error("updateScoreDetail error:", error);
@@ -289,7 +352,8 @@ export async function updateScoreDetail(login, lesson, updates) {
  */
 export async function updateScoreSyncStatus(login, lesson, status, errorMsg = "") {
     try {
-        const allScores = await redis.get("scoredetails:all") || [];
+        const key = buildKey(ENTITIES.SCORE_DETAIL);
+        const allScores = await redis.get(key) || [];
         const loginUpper = login.toUpperCase();
 
         const index = allScores.findIndex(
@@ -300,7 +364,7 @@ export async function updateScoreSyncStatus(login, lesson, status, errorMsg = ""
             allScores[index].pegaSyncStatus = status;
             allScores[index].pegaSyncError = errorMsg;
             allScores[index].pegaSyncDate = new Date().toISOString();
-            await redis.set("scoredetails:all", allScores);
+            await redis.set(key, allScores);
             return { success: true };
         }
 

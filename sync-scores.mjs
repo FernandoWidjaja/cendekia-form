@@ -1,11 +1,18 @@
 /**
- * Sync Score Details - Reconcile missing data from attempts to scoredetails
+ * @deprecated This script is DEPRECATED as of A2 migration.
  * 
- * Problem: Some quiz attempts exist in `attempts:LOGIN` keys but are missing
- * from `scoredetails:all`. This script scans all attempts and fills the gaps.
+ * Attempts have been eliminated — quiz completion is now tracked directly
+ * in ScoreDetail (program-store.js). No sync needed.
  * 
- * Run with: node sync-scores.mjs
+ * For migration of existing attempts data into ScoreDetail, use:
+ *   POST /api/admin/migrate?step=merge-attempts
+ * 
+ * Original purpose: Sync Score Details — Reconcile missing data from 
+ * attempts to scoredetails.
+ * 
+ * Run with: node sync-scores.mjs (NO LONGER RECOMMENDED)
  */
+
 
 import { config } from 'dotenv';
 import { Redis } from '@upstash/redis';
@@ -24,7 +31,7 @@ async function syncScoreDetails() {
     });
 
     if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-        console.error('❌ Error: Redis credentials not found in .env.local');
+        console.error('❌ Error: Redis credentials not found in .env');
         process.exit(1);
     }
 
@@ -42,7 +49,7 @@ async function syncScoreDetails() {
         );
 
         // ============================================================
-        // Step 2: Read master:program-siswa for enrichment
+        // Step 2: Read master:program-siswa for login list + enrichment
         // ============================================================
         console.log('\n📥 Step 2: Reading master:program-siswa...');
         const programSiswa = await redis.get('master:program-siswa') || [];
@@ -50,52 +57,60 @@ async function syncScoreDetails() {
 
         // Build lookup map: LOGIN -> { namaProgram, batch }
         const programMap = {};
+        const allLogins = [];
         programSiswa.forEach(p => {
-            programMap[p.login?.toUpperCase()] = {
-                namaProgram: p.namaProgram || 'UNKNOWN',
-                batch: p.batch || '',
-            };
+            const login = p.login?.toUpperCase();
+            if (login) {
+                programMap[login] = {
+                    namaProgram: p.namaProgram || 'UNKNOWN',
+                    batch: p.batch || '',
+                };
+                allLogins.push(login);
+            }
         });
 
-        // ============================================================
-        // Step 3: Scan all attempts:* keys using SCAN
-        // ============================================================
-        console.log('\n📥 Step 3: Scanning all attempts:* keys...');
-        const attemptKeys = [];
-        let cursor = 0;
-
-        do {
-            const [nextCursor, keys] = await redis.scan(cursor, {
-                match: 'attempts:*',
-                count: 100,
-            });
-            cursor = nextCursor;
-            attemptKeys.push(...keys);
-        } while (cursor !== 0);
-
-        console.log(`   Found ${attemptKeys.length} attempt keys (users with quiz data)`);
+        console.log(`   Unique logins to check: ${allLogins.length}`);
 
         // ============================================================
-        // Step 4: Read all attempts and cross-reference
+        // Step 3: Read attempts for each login (batched)
         // ============================================================
-        console.log('\n🔍 Step 4: Cross-referencing attempts with scoredetails...');
+        console.log('\n🔍 Step 3: Reading attempts for each login...');
 
         let addedCount = 0;
         let alreadyExistsCount = 0;
+        let noAttemptsCount = 0;
         let errorCount = 0;
         const addedDetails = [];
-        const newScores = [...existingScores]; // Clone to modify
+        const newScores = [...existingScores]; // Clone
 
-        for (const key of attemptKeys) {
-            // Extract login from key "attempts:LOGIN"
-            const login = key.replace('attempts:', '').toUpperCase();
+        // Process in batches to avoid overwhelming Upstash
+        const BATCH_SIZE = 10;
+        for (let i = 0; i < allLogins.length; i += BATCH_SIZE) {
+            const batch = allLogins.slice(i, i + BATCH_SIZE);
 
-            try {
-                const attempts = await redis.get(key);
-                if (!attempts || typeof attempts !== 'object') continue;
+            // Read all attempts in parallel within batch
+            const results = await Promise.allSettled(
+                batch.map(login => redis.get(`attempts:${login}`))
+            );
+
+            for (let j = 0; j < batch.length; j++) {
+                const login = batch[j];
+                const result = results[j];
+
+                if (result.status === 'rejected') {
+                    console.error(`   ⚠️ Error reading attempts:${login}:`, result.reason?.message);
+                    errorCount++;
+                    continue;
+                }
+
+                const attempts = result.value;
+                if (!attempts || typeof attempts !== 'object' || Object.keys(attempts).length === 0) {
+                    noAttemptsCount++;
+                    continue;
+                }
 
                 // Each attempt: { lessonName: { score, grade, gradeDesc, correct, total, completedAt } }
-                for (const [lesson, result] of Object.entries(attempts)) {
+                for (const [lesson, attemptData] of Object.entries(attempts)) {
                     const lookupKey = `${login}|${lesson}`;
 
                     if (existingKeys.has(lookupKey)) {
@@ -106,11 +121,11 @@ async function syncScoreDetails() {
                     // Missing! Create score detail entry
                     const program = programMap[login] || { namaProgram: 'UNKNOWN', batch: '' };
 
-                    // Extract date from completedAt or use fallback
+                    // Extract date from completedAt
                     let dateStr = '';
                     let timeStr = '';
-                    if (result.completedAt) {
-                        const completedDate = new Date(result.completedAt);
+                    if (attemptData.completedAt) {
+                        const completedDate = new Date(attemptData.completedAt);
                         dateStr = completedDate.toISOString().split('T')[0].replace(/-/g, '');
                         timeStr = completedDate.toTimeString().split(' ')[0];
                     }
@@ -122,19 +137,19 @@ async function syncScoreDetails() {
                         NamaProgram: program.namaProgram,
                         Section: 'KURIKULUM INDEPENDEN',
                         Lesson: lesson,
-                        Score: (result.score ?? '').toString(),
-                        Grade: result.grade || result.rangeScore || '',
+                        Score: (attemptData.score ?? '').toString(),
+                        Grade: attemptData.grade || attemptData.rangeScore || '',
                         Date: dateStr,
                         SubmitTime: timeStr,
-                        Description: result.gradeDesc || '',
+                        Description: attemptData.gradeDesc || '',
                         Company: '',
                         isASM: false,
-                        _syncedFromAttempt: true,           // Mark as synced (audit trail)
+                        _syncedFromAttempt: true,
                         _syncedAt: new Date().toISOString(),
                     };
 
                     newScores.push(scoreDetail);
-                    existingKeys.add(lookupKey); // Prevent duplicates within this run
+                    existingKeys.add(lookupKey);
                     addedCount++;
 
                     addedDetails.push({
@@ -145,19 +160,23 @@ async function syncScoreDetails() {
                         desc: scoreDetail.Description,
                     });
                 }
-            } catch (err) {
-                console.error(`   ⚠️ Error reading ${key}:`, err.message);
-                errorCount++;
             }
+
+            // Progress indicator
+            const progress = Math.min(i + BATCH_SIZE, allLogins.length);
+            process.stdout.write(`\r   Processing: ${progress}/${allLogins.length} logins...`);
         }
+        console.log(''); // Newline after progress
 
         // ============================================================
-        // Step 5: Report before saving
+        // Step 4: Report
         // ============================================================
         console.log('\n' + '='.repeat(60));
         console.log('📊 SYNC REPORT');
         console.log('='.repeat(60));
         console.log(`   Existing score details:    ${existingScores.length}`);
+        console.log(`   Logins checked:            ${allLogins.length}`);
+        console.log(`   Logins with no attempts:   ${noAttemptsCount}`);
         console.log(`   Attempts already in sync:  ${alreadyExistsCount}`);
         console.log(`   ✨ NEW records to add:     ${addedCount}`);
         console.log(`   Errors:                    ${errorCount}`);
@@ -177,7 +196,7 @@ async function syncScoreDetails() {
             addedDetails.forEach(d => {
                 console.log(
                     d.login.padEnd(20) +
-                    d.lesson.padEnd(30) +
+                    (d.lesson.length > 28 ? d.lesson.slice(0, 28) + '..' : d.lesson).padEnd(30) +
                     d.score.padEnd(8) +
                     d.grade.padEnd(6) +
                     d.desc
@@ -185,9 +204,9 @@ async function syncScoreDetails() {
             });
 
             // ============================================================
-            // Step 6: Save merged data back to Redis
+            // Step 5: Save merged data back to Redis
             // ============================================================
-            console.log('\n💾 Step 6: Saving merged data to scoredetails:all...');
+            console.log('\n💾 Step 5: Saving merged data to scoredetails:all...');
             await redis.set('scoredetails:all', newScores);
             console.log(`   ✅ Successfully saved ${newScores.length} records to Redis!`);
 

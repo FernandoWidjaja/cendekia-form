@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
-import { Redis } from "@upstash/redis";
+import redis from "@/lib/redis-client";
+import { buildKey, ENTITIES, LEGACY_KEYS } from "@/lib/key-builder";
+import { runAllMigrations, migrateKey, migrateAttemptsToScoreDetail } from "@/lib/migrate-redis";
 
 /**
- * Incremental Migration API
+ * Migration API — Key re-mapping + A2 (attempts → ScoreDetail)
  * Runs migration in small batches to avoid Vercel timeout
  */
-
-const redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL || "",
-    token: process.env.UPSTASH_REDIS_REST_TOKEN || "",
-});
 
 // Admin credentials
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "WIDJ47@GMAIL.COM";
@@ -32,8 +29,11 @@ function verifyAdmin(request) {
 
 /**
  * POST /api/admin/migrate
- * Runs ONE migration step at a time
- * Query params: ?step=quizzes|attempts|scoredetails|mitra
+ * Runs migration steps
+ * Query params: 
+ *   ?step=remap-keys    — Re-map all legacy keys to new format
+ *   ?step=merge-attempts — Merge attempts data into ScoreDetail (A2)
+ *   ?step=all           — Run all migrations
  */
 export async function POST(request) {
     if (!verifyAdmin(request)) {
@@ -41,36 +41,38 @@ export async function POST(request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const step = searchParams.get("step") || "quizzes";
+    const step = searchParams.get("step") || "all";
 
     try {
         let result;
 
         switch (step) {
-            case "quizzes":
-                result = await migrateQuizzes();
+            case "remap-keys": {
+                // Re-map each legacy key individually
+                const results = {};
+                for (const [oldKey, entity] of Object.entries(LEGACY_KEYS)) {
+                    results[oldKey] = await migrateKey(oldKey, entity);
+                }
+                result = results;
                 break;
-            case "attempts":
-                result = await migrateAttempts();
+            }
+            case "merge-attempts":
+                result = await migrateAttemptsToScoreDetail();
                 break;
-            case "scoredetails":
-                result = await migrateScoreDetails();
-                break;
-            case "sync":
-                result = await syncScoreDetails();
-                break;
-            case "mitra":
-                result = await migrateMitra();
+            case "all":
+                result = await runAllMigrations();
                 break;
             default:
-                return NextResponse.json({ error: "Invalid step. Use: quizzes, attempts, scoredetails, sync, mitra" }, { status: 400 });
+                return NextResponse.json(
+                    { error: "Invalid step. Use: remap-keys, merge-attempts, all" },
+                    { status: 400 }
+                );
         }
 
         return NextResponse.json({
             success: true,
             step,
             result,
-            nextStep: getNextStep(step),
         });
     } catch (error) {
         console.error(`Migration error (${step}):`, error);
@@ -78,268 +80,40 @@ export async function POST(request) {
     }
 }
 
-function getNextStep(current) {
-    const steps = ["quizzes", "attempts", "scoredetails", "mitra"];
-    const idx = steps.indexOf(current);
-    return idx < steps.length - 1 ? steps[idx + 1] : null;
-}
-
 /**
- * GET /api/admin/migrate - Check status
+ * GET /api/admin/migrate - Check current data status
+ * Shows counts for both legacy and new key formats
  */
 export async function GET(request) {
     if (!verifyAdmin(request)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check what's already migrated
-    const quizzes = await redis.get("quizzes:all");
-    const scoredetails = await redis.get("scoredetails:all");
-    const mitra = await redis.get("mitrakerja:all");
+    // Check new format keys
+    const newKeys = {};
+    for (const [, entity] of Object.entries(ENTITIES)) {
+        if (entity === "RateLimit") continue; // Skip rate limit
+        const key = buildKey(entity);
+        const data = await redis.get(key);
+        newKeys[entity] = {
+            key,
+            count: Array.isArray(data) ? data.length : (data ? 1 : 0),
+        };
+    }
+
+    // Check legacy keys
+    const legacyKeys = {};
+    for (const oldKey of Object.keys(LEGACY_KEYS)) {
+        const data = await redis.get(oldKey);
+        legacyKeys[oldKey] = {
+            count: Array.isArray(data) ? data.length : (data ? 1 : 0),
+        };
+    }
 
     return NextResponse.json({
         success: true,
-        status: {
-            quizzes: quizzes ? quizzes.length : 0,
-            scoredetails: scoredetails ? scoredetails.length : 0,
-            mitra: mitra ? mitra.length : 0,
-        },
-        instructions: "POST with ?step=quizzes, then ?step=attempts, then ?step=scoredetails, then ?step=mitra",
+        newFormat: newKeys,
+        legacyFormat: legacyKeys,
+        instructions: "POST with ?step=remap-keys, then ?step=merge-attempts, or ?step=all for everything",
     });
-}
-
-// ============== MIGRATION FUNCTIONS ==============
-
-async function scanKeys(pattern, limit = 50) {
-    const allKeys = [];
-    let cursor = 0;
-
-    do {
-        const result = await redis.scan(cursor, { match: pattern, count: 50 });
-        cursor = result[0];
-        const keys = result[1];
-        allKeys.push(...keys);
-
-        // Limit to avoid timeout
-        if (allKeys.length >= limit) break;
-    } while (cursor !== 0);
-
-    return allKeys.slice(0, limit);
-}
-
-async function migrateQuizzes() {
-    // Check if already migrated
-    const existing = await redis.get("quizzes:all");
-    if (existing && existing.length > 0) {
-        return { skipped: true, count: existing.length };
-    }
-
-    // Scan for quiz keys (limit 50 at a time)
-    const keys = await scanKeys("quiz:*", 100);
-
-    if (keys.length === 0) {
-        await redis.set("quizzes:all", []);
-        return { success: true, count: 0 };
-    }
-
-    const quizzes = [];
-    for (const key of keys) {
-        const quiz = await redis.get(key);
-        if (quiz) {
-            quizzes.push({
-                ...quiz,
-                key,
-                lessonName: quiz.lessonName || key.replace("quiz:", ""),
-            });
-        }
-    }
-
-    await redis.set("quizzes:all", quizzes);
-    return { success: true, count: quizzes.length };
-}
-
-async function migrateAttempts() {
-    // Scan for attempt keys (limit to avoid timeout)
-    const keys = await scanKeys("attempt:*", 200);
-
-    if (keys.length === 0) {
-        return { success: true, count: 0, users: 0 };
-    }
-
-    // Group by login
-    const attemptsByLogin = {};
-    for (const key of keys) {
-        const parts = key.split(":");
-        if (parts.length >= 3) {
-            const login = parts[1];
-            const lessonName = parts.slice(2).join(":");
-
-            const attempt = await redis.get(key);
-            if (attempt) {
-                if (!attemptsByLogin[login]) {
-                    attemptsByLogin[login] = {};
-                }
-                attemptsByLogin[login][lessonName] = attempt;
-            }
-        }
-    }
-
-    // Save per-user
-    let userCount = 0;
-    for (const [login, attempts] of Object.entries(attemptsByLogin)) {
-        const newKey = `attempts:${login}`;
-        const existing = await redis.get(newKey) || {};
-        const merged = { ...existing, ...attempts };
-        await redis.set(newKey, merged);
-        userCount++;
-    }
-
-    return { success: true, count: keys.length, users: userCount };
-}
-
-async function migrateScoreDetails() {
-    // Get existing data (don't skip - we'll merge)
-    const existing = await redis.get("scoredetails:all") || [];
-
-    // Get from index first (this is likely already populated)
-    let indexKeys = await redis.get("scoredetail:keys") || [];
-
-    // If no index, try scan
-    if (indexKeys.length === 0) {
-        indexKeys = await scanKeys("scoredetail:*", 1000);
-        indexKeys = indexKeys.filter(k => k !== "scoredetail:keys");
-    }
-
-    if (indexKeys.length === 0) {
-        return { success: true, count: existing.length, newAdded: 0 };
-    }
-
-    // Fetch all scores using mget for efficiency (batch of 50)
-    const oldFormatScores = [];
-    const batchSize = 50;
-
-    for (let i = 0; i < indexKeys.length; i += batchSize) {
-        const batch = indexKeys.slice(i, i + batchSize);
-        const results = await redis.mget(...batch);
-
-        results.forEach((score, idx) => {
-            if (score) {
-                const key = batch[idx];
-                const isASM = key.includes(":asm:");
-                oldFormatScores.push({ ...score, isASM });
-            }
-        });
-    }
-
-    // Merge: add scores from old format that don't exist in new format
-    let newAdded = 0;
-    for (const oldScore of oldFormatScores) {
-        const exists = existing.some(
-            s => s.Login === oldScore.Login && s.Lesson === oldScore.Lesson
-        );
-        if (!exists) {
-            existing.push(oldScore);
-            newAdded++;
-        }
-    }
-
-    await redis.set("scoredetails:all", existing);
-    return { success: true, count: existing.length, newAdded, fromOldFormat: oldFormatScores.length };
-}
-
-/**
- * Sync: specifically designed to sync new data from old format to new format
- * This scans ALL scoredetail:* keys and merges them
- */
-async function syncScoreDetails() {
-    // Get existing data from new format
-    const existing = await redis.get("scoredetails:all") || [];
-    console.log(`Existing scores in new format: ${existing.length}`);
-
-    // Scan ALL scoredetail:* keys (increase limit significantly)
-    const allOldKeys = await scanKeys("scoredetail:*", 5000);
-    const filteredKeys = allOldKeys.filter(k => k !== "scoredetail:keys");
-    console.log(`Found ${filteredKeys.length} keys in old format`);
-
-    if (filteredKeys.length === 0) {
-        return { success: true, count: existing.length, newAdded: 0, message: "No old format keys found" };
-    }
-
-    // Fetch all scores from old format
-    const oldFormatScores = [];
-    const batchSize = 50;
-
-    for (let i = 0; i < filteredKeys.length; i += batchSize) {
-        const batch = filteredKeys.slice(i, i + batchSize);
-        const results = await redis.mget(...batch);
-
-        results.forEach((score, idx) => {
-            if (score) {
-                const key = batch[idx];
-                const isASM = key.includes(":asm:");
-                oldFormatScores.push({ ...score, isASM });
-            }
-        });
-    }
-
-    console.log(`Fetched ${oldFormatScores.length} scores from old format`);
-
-    // Merge: add scores from old format that don't exist in new format
-    let newAdded = 0;
-    for (const oldScore of oldFormatScores) {
-        const login = (oldScore.Login || "").toUpperCase();
-        const lesson = oldScore.Lesson || "";
-
-        const exists = existing.some(
-            s => (s.Login || "").toUpperCase() === login && s.Lesson === lesson
-        );
-
-        if (!exists) {
-            existing.push({ ...oldScore, Login: login });
-            newAdded++;
-        }
-    }
-
-    console.log(`Adding ${newAdded} new scores to new format`);
-    await redis.set("scoredetails:all", existing);
-
-    return {
-        success: true,
-        totalInNewFormat: existing.length,
-        newAdded,
-        scannedFromOldFormat: oldFormatScores.length
-    };
-}
-
-async function migrateMitra() {
-    // Check if already migrated
-    const existing = await redis.get("mitrakerja:all");
-    if (existing && existing.length > 0) {
-        return { skipped: true, count: existing.length };
-    }
-
-    // Get from index first
-    let indexKeys = await redis.get("mitrakerja:keys") || [];
-
-    // If no index, try scan
-    if (indexKeys.length === 0) {
-        indexKeys = await scanKeys("mitrakerja:*", 200);
-        indexKeys = indexKeys.filter(k => k !== "mitrakerja:keys");
-    }
-
-    if (indexKeys.length === 0) {
-        await redis.set("mitrakerja:all", []);
-        return { success: true, count: 0 };
-    }
-
-    const mitraList = [];
-    for (const key of indexKeys) {
-        const mitra = await redis.get(key);
-        if (mitra) {
-            mitraList.push(mitra);
-        }
-    }
-
-    await redis.set("mitrakerja:all", mitraList);
-    return { success: true, count: mitraList.length };
 }

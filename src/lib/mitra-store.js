@@ -1,16 +1,13 @@
 "use strict";
 
-import { Redis } from "@upstash/redis";
+import redis from "./redis-client";
+import { buildKey, ENTITIES } from "./key-builder";
 
 /**
  * Mitra Store - CRUD for Mitra Kerja data
  * OPTIMIZED: Uses single key storage to reduce commands
+ * UPDATED: Uses centralized key-builder for namespace isolation
  */
-
-const redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
 
 /**
  * Save Mitra data to Redis - OPTIMIZED: updates array
@@ -18,7 +15,8 @@ const redis = new Redis({
  */
 export async function saveMitra(mitraData) {
     try {
-        const allMitra = await redis.get("mitrakerja:all") || [];
+        const key = buildKey(ENTITIES.MITRA_KERJA);
+        const allMitra = await redis.get(key) || [];
 
         const data = {
             Login: mitraData.login.toUpperCase(),
@@ -37,7 +35,7 @@ export async function saveMitra(mitraData) {
             allMitra.push(data);
         }
 
-        await redis.set("mitrakerja:all", allMitra);
+        await redis.set(key, allMitra);
         return { success: true };
     } catch (error) {
         console.error("saveMitra error:", error);
@@ -50,7 +48,7 @@ export async function saveMitra(mitraData) {
  */
 export async function getMitra(login) {
     try {
-        const allMitra = await redis.get("mitrakerja:all") || [];
+        const allMitra = await redis.get(buildKey(ENTITIES.MITRA_KERJA)) || [];
         return allMitra.find(m => m.Login === login.toUpperCase()) || null;
     } catch (error) {
         console.error("getMitra error:", error);
@@ -63,7 +61,7 @@ export async function getMitra(login) {
  */
 export async function getAllMitra() {
     try {
-        const allMitra = await redis.get("mitrakerja:all") || [];
+        const allMitra = await redis.get(buildKey(ENTITIES.MITRA_KERJA)) || [];
         return allMitra;
     } catch (error) {
         console.error("getAllMitra error:", error);
@@ -76,9 +74,10 @@ export async function getAllMitra() {
  */
 export async function deleteMitra(login) {
     try {
-        const allMitra = await redis.get("mitrakerja:all") || [];
+        const key = buildKey(ENTITIES.MITRA_KERJA);
+        const allMitra = await redis.get(key) || [];
         const filtered = allMitra.filter(m => m.Login !== login.toUpperCase());
-        await redis.set("mitrakerja:all", filtered);
+        await redis.set(key, filtered);
         return { success: true };
     } catch (error) {
         console.error("deleteMitra error:", error);
@@ -91,7 +90,8 @@ export async function deleteMitra(login) {
  */
 export async function bulkSaveMitra(mitraList) {
     try {
-        const allMitra = await redis.get("mitrakerja:all") || [];
+        const key = buildKey(ENTITIES.MITRA_KERJA);
+        const allMitra = await redis.get(key) || [];
         let saved = 0;
 
         for (const mitra of mitraList) {
@@ -117,7 +117,7 @@ export async function bulkSaveMitra(mitraList) {
         }
 
         // Single save at the end - much more efficient!
-        await redis.set("mitrakerja:all", allMitra);
+        await redis.set(key, allMitra);
         return { success: true, saved };
     } catch (error) {
         console.error("bulkSaveMitra error:", error);

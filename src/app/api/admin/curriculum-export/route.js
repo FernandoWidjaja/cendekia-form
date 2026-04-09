@@ -68,6 +68,7 @@ export async function GET(request) {
                     "Tanggal Ujian": qd.date || "-",
                     Skor: qd.score !== null ? qd.score : "-",
                     Status: qd.status,
+                    "Diambil Pada": qd.takenYear,
                 });
             }
         }
@@ -75,7 +76,7 @@ export async function GET(request) {
         const ws2 = XLSX.utils.json_to_sheet(sheet2Rows);
         ws2["!cols"] = [
             { wch: 5 },  { wch: 30 }, { wch: 35 }, { wch: 20 }, { wch: 15 },
-            { wch: 25 }, { wch: 15 }, { wch: 40 }, { wch: 14 }, { wch: 8 }, { wch: 15 },
+            { wch: 25 }, { wch: 15 }, { wch: 40 }, { wch: 14 }, { wch: 8 }, { wch: 15 }, { wch: 15 },
         ];
 
         // ── SHEET 3: STATISTIK PER TAHUN ────────────────────────────────────

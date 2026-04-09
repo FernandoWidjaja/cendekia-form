@@ -39,8 +39,7 @@ function calculateTenure(dateStr) {
 
     if (diffDays <= 365) return { year: 1, label: "Tahun 1", days: diffDays };
     if (diffDays <= 730) return { year: 2, label: "Tahun 2", days: diffDays };
-    if (diffDays <= 1095) return { year: 3, label: "Tahun 3", days: diffDays };
-    return { year: 4, label: `${Math.ceil(diffDays / 365)} Tahun`, days: diffDays };
+    return { year: 3, label: "Tahun 3", days: diffDays };
 }
 
 /**
@@ -109,6 +108,27 @@ export async function getCurriculumMonitoringData(filters = {}) {
         const studentKiMap = kiScoreLookup[login] || new Map();
 
         // Build per-lesson detail for popup
+        // Calculate tenure and student start date first
+        let effectiveDate = siswa.effectiveDate;
+        if (!effectiveDate || effectiveDate === "NOT_FOUND") {
+            const anyScore = Object.values(Object.fromEntries(studentKiMap))[0];
+            effectiveDate = anyScore?.EffectiveDate || "";
+        }
+        const tenure = calculateTenure(effectiveDate);
+
+        let startDateObj = null;
+        if (effectiveDate) {
+            if (effectiveDate.includes("/")) {
+                const [dd, mm, yyyy] = effectiveDate.split("/");
+                startDateObj = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+            } else if (effectiveDate.length === 8) {
+                const yyyy = effectiveDate.slice(0, 4);
+                const mm = effectiveDate.slice(4, 6);
+                const dd = effectiveDate.slice(6, 8);
+                startDateObj = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+            }
+        }
+
         let totalScore = 0;
         let quizzesTaken = 0;
         let quizzesPassed = 0;
@@ -124,14 +144,33 @@ export async function getCurriculumMonitoringData(filters = {}) {
                 quizzesTaken++;
                 if (lulus) quizzesPassed++;
                 else quizzesFailed++;
+
+                const qDate = entry.Date || date;
+                let takenYear = "-";
+                let kiDateObj = null;
+                if (qDate && qDate.length === 8) {
+                    kiDateObj = new Date(parseInt(qDate.slice(0, 4)), parseInt(qDate.slice(4, 6)) - 1, parseInt(qDate.slice(6, 8)));
+                } else if (qDate && qDate.includes("/")) {
+                    const [dd, mm, yyyy] = qDate.split("/");
+                    kiDateObj = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+                }
+
+                if (startDateObj && kiDateObj && !isNaN(startDateObj.getTime()) && !isNaN(kiDateObj.getTime())) {
+                    const diffDays = Math.floor((kiDateObj - startDateObj) / (1000 * 60 * 60 * 24));
+                    if (diffDays <= 365) takenYear = "Tahun 1";
+                    else if (diffDays <= 730) takenYear = "Tahun 2";
+                    else takenYear = "Tahun 3";
+                }
+
                 return {
                     lesson,
-                    date: entry.Date || date,
+                    date: qDate,
                     score,
                     status: lulus ? "LULUS" : "TIDAK LULUS",
+                    takenYear
                 };
             }
-            return { lesson, date, score: null, status: "BELUM IKUT" };
+            return { lesson, date, score: null, status: "BELUM IKUT", takenYear: "Belum Ikut" };
         });
 
         const quizzesNotTaken = totalKI - quizzesTaken;
@@ -139,14 +178,6 @@ export async function getCurriculumMonitoringData(filters = {}) {
         const pctLulus = totalKI > 0 ? Math.round((quizzesPassed / totalKI) * 100) : 0;
         const pctTidakLulus = totalKI > 0 ? Math.round(((quizzesFailed + quizzesNotTaken) / totalKI) * 100) : 0;
         const completionPct = totalKI > 0 ? Math.round((quizzesTaken / totalKI) * 100) : 0;
-
-        // Calculate tenure
-        let effectiveDate = siswa.effectiveDate;
-        if (!effectiveDate || effectiveDate === "NOT_FOUND") {
-            const anyScore = Object.values(Object.fromEntries(studentKiMap))[0];
-            effectiveDate = anyScore?.EffectiveDate || "";
-        }
-        const tenure = calculateTenure(effectiveDate);
 
         // Format tanggal masuk
         let formattedTanggalMasuk = "-";
@@ -206,14 +237,14 @@ export async function getCurriculumMonitoringData(filters = {}) {
     filtered.sort((a, b) => a.nama.localeCompare(b.nama));
 
     // 7. Year breakdown stats
-    const yearGroups = { 1: [], 2: [], 3: [], 4: [] };
+    const yearGroups = { 1: [], 2: [], 3: [] };
     for (const r of filtered) {
         const yr = r.tenure.year;
         if (yearGroups[yr] !== undefined) yearGroups[yr].push(r);
-        else yearGroups[4].push(r);
+        else yearGroups[3].push(r); // default to year 3 if missing/other
     }
 
-    const yearBreakdown = [1, 2, 3, 4].map(yr => {
+    const yearBreakdown = [1, 2, 3].map(yr => {
         const group = yearGroups[yr] || [];
         const sudahIkut = group.filter(r => r.quizzesTaken > 0).length;
         const avgPctLulus = group.length > 0

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
@@ -2151,7 +2151,65 @@ export default function AdminPage() {
                         </section>
                     </div>
                 )}
-                
+                {/* Student Detail Modal */}
+                {studentDetailModal && (
+                    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px" }} onClick={() => setStudentDetailModal(null)}>
+                        <div style={{ background: "white", padding: "24px", borderRadius: "12px", width: "100%", maxWidth: "800px", maxHeight: "90vh", overflowY: "auto", position: "relative" }} onClick={e => e.stopPropagation()}>
+                            <button onClick={() => setStudentDetailModal(null)} style={{ position: "absolute", top: "16px", right: "20px", background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: "#6b7280" }}>&times;</button>
+                            <h2 style={{ marginBottom: "8px", color: "#1f2937", borderBottom: "2px solid #e5e7eb", paddingBottom: "12px" }}>Informasi Siswa</h2>
+                            
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "20px", fontSize: "0.95rem" }}>
+                                <div><strong>Nama:</strong> {studentDetailModal.nama}</div>
+                                <div><strong>Login:</strong> {studentDetailModal.login}</div>
+                                <div><strong>Program:</strong> {studentDetailModal.programSiswa}</div>
+                                <div><strong>ASM Leader:</strong> {studentDetailModal.asmLeaderName}</div>
+                                <div><strong>Tgl Masuk:</strong> {studentDetailModal.tanggalMasuk}</div>
+                                <div><strong>Masa Pelatihan:</strong> <span style={{ color: "#3b82f6", fontWeight: "bold" }}>{studentDetailModal.tenure.label}</span></div>
+                            </div>
+
+                            <h3 style={{ marginBottom: "12px", color: "#374151" }}>Detail Lulus KI</h3>
+                            
+                            {["Tahun 1", "Tahun 2", "Tahun 3", "Belum Ikut"].map(yrGroup => {
+                                const lessonsInGroup = studentDetailModal.quizDetails?.filter(q => q.takenYear === yrGroup || (!q.takenYear && yrGroup === "Belum Ikut")) || [];
+                                if (lessonsInGroup.length === 0) return null;
+                                
+                                return (
+                                    <div key={yrGroup} style={{ marginBottom: "20px", border: "1px solid #e5e7eb", borderRadius: "8px", overflow: "hidden" }}>
+                                        <div style={{ background: "#f3f4f6", padding: "10px 16px", fontWeight: "bold", color: "#374151", borderBottom: "1px solid #e5e7eb" }}>
+                                            Group: {yrGroup === "Belum Ikut" ? "Belum Diikuti" : yrGroup} ({lessonsInGroup.length} Lesson)
+                                        </div>
+                                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                                            <thead style={{ background: "#f9fafb" }}>
+                                                <tr>
+                                                    <th style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", textAlign: "left" }}>Lesson</th>
+                                                    <th style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", textAlign: "center", width: "120px" }}>Tgl Ujian</th>
+                                                    <th style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", textAlign: "center", width: "80px" }}>Skor</th>
+                                                    <th style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", textAlign: "center", width: "120px" }}>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {lessonsInGroup.map((qd, i) => (
+                                                    <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                                                        <td style={{ padding: "8px 12px", color: "#374151" }}>{qd.lesson}</td>
+                                                        <td style={{ padding: "8px 12px", textAlign: "center", color: "#6b7280" }}>{qd.date || "-"}</td>
+                                                        <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: "bold", color: qd.score >= 70 ? "#059669" : (qd.score > 0 ? "#dc2626" : "#9ca3af") }}>{qd.score !== null ? qd.score : "-"}</td>
+                                                        <td style={{ padding: "8px 12px", textAlign: "center" }}>
+                                                            <span style={{ padding: "4px 8px", borderRadius: "12px", fontSize: "0.75rem", fontWeight: "bold",
+                                                                background: qd.status === "LULUS" ? "#d1fae5" : (qd.status === "TIDAK LULUS" ? "#fee2e2" : "#f3f4f6"),
+                                                                color: qd.status === "LULUS" ? "#059669" : (qd.status === "TIDAK LULUS" ? "#dc2626" : "#6b7280") }}>
+                                                                {qd.status}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
             </div>
         </main>
     );

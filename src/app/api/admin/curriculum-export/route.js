@@ -4,8 +4,8 @@ import * as XLSX from "xlsx";
 
 /**
  * GET /api/admin/curriculum-export
- * Export curriculum monitoring data as Excel
- * Query params: year (1|2|3), search (string)
+ * Export curriculum monitoring as Excel with 3 sheets
+ * Query params: year, search, asmLeader
  */
 export async function GET(request) {
     try {
@@ -17,53 +17,95 @@ export async function GET(request) {
         const { searchParams } = new URL(request.url);
         const year = parseInt(searchParams.get("year")) || 0;
         const search = searchParams.get("search") || "";
+        const asmLeader = searchParams.get("asmLeader") || "";
 
-        const result = await getCurriculumMonitoringData({ year, search });
-        const { data, quizNames, summary } = result;
+        const result = await getCurriculumMonitoringData({ year, search, asmLeader });
+        const { data, summary } = result;
 
-        // Sheet 1: Ringkasan (Summary table)
-        const summaryRows = data.map((row, idx) => ({
+        // ── SHEET 1: RINGKASAN ──────────────────────────────────────────────
+        const sheet1Rows = data.map((row, idx) => ({
             No: idx + 1,
             Nama: row.nama,
             Login: row.login,
-            "Program Siswa": row.programSiswa,
+            "Program": row.programSiswa,
             Batch: row.batch,
             "ASM Leader": row.asmLeaderName,
             "Tanggal Masuk": row.tanggalMasuk,
             "Masa Pelatihan": row.tenure.label,
-            "Lulus KI": row.quizzesPassed,
-            "Tidak Lulus KI": row.quizzesFailed,
-            "Persentase Keikutsertaan (%)": row.completionPct,
+            "Total Lesson KI": row.totalQuizzes,
+            "Diikuti": row.quizzesTaken,
+            "Lulus (≥70)": row.quizzesPassed,
+            "Tidak Lulus (<70)": row.quizzesFailed,
+            "Belum Ikut": row.quizzesNotTaken,
+            "% Lulus": row.pctLulus,
+            "% Tidak Lulus/TI": row.pctTidakLulus,
             "Avg Score": row.avgScore,
         }));
 
-        const ws1 = XLSX.utils.json_to_sheet(summaryRows);
-
-        // Set column widths
+        const ws1 = XLSX.utils.json_to_sheet(sheet1Rows);
         ws1["!cols"] = [
-            { wch: 5 },  // No
-            { wch: 25 }, // Nama
-            { wch: 30 }, // Login
-            { wch: 20 }, // Program
-            { wch: 15 }, // Batch
-            { wch: 25 }, // ASM Leader
-            { wch: 15 }, // Tanggal Masuk
-            { wch: 15 }, // Masa Pelatihan
-            { wch: 15 }, // Lulus KI
-            { wch: 15 }, // Tidak Lulus KI
-            { wch: 25 }, // Persentase
-            { wch: 12 }, // Avg Score
+            { wch: 5 },  { wch: 30 }, { wch: 35 }, { wch: 20 }, { wch: 15 },
+            { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
+            { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
         ];
 
-        // Build workbook
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws1, "Ringkasan KI");
+        // ── SHEET 2: DETAIL PER LESSON ──────────────────────────────────────
+        // One row per student × lesson that was taken (only participated ones)
+        // Also include not-taken rows so export is complete
+        const sheet2Rows = [];
+        let no2 = 1;
+        for (const row of data) {
+            for (const qd of row.quizDetails) {
+                sheet2Rows.push({
+                    No: no2++,
+                    Nama: row.nama,
+                    Login: row.login,
+                    Program: row.programSiswa,
+                    Batch: row.batch,
+                    "ASM Leader": row.asmLeaderName,
+                    "Masa Pelatihan": row.tenure.label,
+                    Lesson: qd.lesson,
+                    "Tanggal Ujian": qd.date || "-",
+                    Skor: qd.score !== null ? qd.score : "-",
+                    Status: qd.status,
+                });
+            }
+        }
 
-        // Generate buffer
+        const ws2 = XLSX.utils.json_to_sheet(sheet2Rows);
+        ws2["!cols"] = [
+            { wch: 5 },  { wch: 30 }, { wch: 35 }, { wch: 20 }, { wch: 15 },
+            { wch: 25 }, { wch: 15 }, { wch: 40 }, { wch: 14 }, { wch: 8 }, { wch: 15 },
+        ];
+
+        // ── SHEET 3: STATISTIK PER TAHUN ────────────────────────────────────
+        const sheet3Rows = (summary.yearBreakdown || []).map((g, idx) => ({
+            No: idx + 1,
+            "Kelompok Tahun": g.label,
+            "Total Siswa": g.totalSiswa,
+            "Sudah Ikut KI": g.sudahIkut,
+            "% Partisipasi": g.pctPartisipasi,
+            "Rata-rata % Lulus": g.avgPctLulus,
+            "Rata-rata Score": g.avgScore,
+        }));
+
+        const ws3 = XLSX.utils.json_to_sheet(
+            sheet3Rows.length > 0 ? sheet3Rows : [{ Keterangan: "Tidak ada data" }]
+        );
+        ws3["!cols"] = [
+            { wch: 5 }, { wch: 20 }, { wch: 15 }, { wch: 18 },
+            { wch: 16 }, { wch: 22 }, { wch: 18 },
+        ];
+
+        // ── BUILD WORKBOOK ───────────────────────────────────────────────────
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws1, "Ringkasan");
+        XLSX.utils.book_append_sheet(wb, ws2, "Detail Per Lesson");
+        XLSX.utils.book_append_sheet(wb, ws3, "Statistik Per Tahun");
+
         const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
-        // Return as downloadable file
-        const filename = `curriculum_monitoring${year ? `_year${year}` : ""}_${new Date().toISOString().split("T")[0]}.xlsx`;
+        const filename = `curriculum_monitoring${year ? `_tahun${year}` : ""}${asmLeader ? `_${asmLeader.replace(/\s+/g, "_")}` : ""}_${new Date().toISOString().split("T")[0]}.xlsx`;
 
         return new Response(buf, {
             headers: {

@@ -5,28 +5,25 @@ import { getAllQuizzes } from "./quiz-store";
 /**
  * Curriculum Monitoring Store
  * Combines ProgramSiswa, ScoreDetail, and Master Quiz data
- * to produce a curriculum monitoring view per student.
- *
- * Columns requested:
- *   Nama, Program Siswa, Batch, Masa Pelatihan (from EffectiveDate), Avg Score
- *   + per-quiz breakdown (taken / not taken, score 0 = not taken)
+ * Lessons sourced from KURIKULUM INDEPENDEN section in ScoreDetail (union with Redis quizzes)
+ * Lesson uniqueness: LessonName + Date (same lesson on different dates = different quiz)
+ * KKM = 70
  */
+
+const KKM = 70;
+const KI_SECTION = "KURIKULUM INDEPENDEN";
 
 /**
  * Calculate tenure year from EffectiveDate (YYYYMMDD or DD/MM/YYYY)
- * @param {string} dateStr - EffectiveDate in YYYYMMDD or DD/MM/YYYY format
- * @returns {{ year: number, label: string, days: number }}
  */
 function calculateTenure(dateStr) {
     if (!dateStr) return { year: 0, label: "N/A", days: 0 };
 
     let date;
     if (dateStr.includes("/")) {
-        // DD/MM/YYYY
         const [dd, mm, yyyy] = dateStr.split("/");
         date = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
     } else if (dateStr.length === 8) {
-        // YYYYMMDD
         const yyyy = dateStr.slice(0, 4);
         const mm = dateStr.slice(4, 6);
         const dd = dateStr.slice(6, 8);
@@ -38,8 +35,7 @@ function calculateTenure(dateStr) {
     if (isNaN(date.getTime())) return { year: 0, label: "N/A", days: 0 };
 
     const now = new Date();
-    const diffMs = now - date;
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
 
     if (diffDays <= 365) return { year: 1, label: "Tahun 1", days: diffDays };
     if (diffDays <= 730) return { year: 2, label: "Tahun 2", days: diffDays };
@@ -49,8 +45,7 @@ function calculateTenure(dateStr) {
 
 /**
  * Build curriculum monitoring data
- * @param {object} filters - { year?: number, search?: string }
- * @returns {Promise<object>} - { data: [...], quizNames: [...], summary: {...} }
+ * @param {object} filters - { year?: number, search?: string, asmLeader?: string }
  */
 export async function getCurriculumMonitoringData(filters = {}) {
     // 1. Fetch all data sources in parallel
@@ -60,61 +55,100 @@ export async function getCurriculumMonitoringData(filters = {}) {
         getAllQuizzes(),
     ]);
 
-    // 2. Build master quiz name list (only KURIKULUM INDEPENDEN quizzes)
-    const quizNames = allQuizzes.map(q => q.lessonName).sort();
+    // 2. Filter ScoreDetail to only KURIKULUM INDEPENDEN section
+    const kiScores = allScores.filter(s =>
+        (s.Section || "").toUpperCase().includes("KURIKULUM INDEPENDEN")
+    );
 
-    // 3. Build lookup maps
-    const scoreLookup = {};
-    for (const score of allScores) {
-        const login = score.Login?.toUpperCase();
-        if (!login) continue;
-        if (!scoreLookup[login]) scoreLookup[login] = {};
-        scoreLookup[login][score.Lesson] = score;
+    // 3. Build master lesson list: unique (Lesson + Date) pairs from KI scores
+    //    Key format: "LessonName|||Date"
+    const kiLessonMap = new Map(); // key → { lesson, date }
+    for (const s of kiScores) {
+        if (!s.Lesson) continue;
+        const date = s.Date || "";
+        const key = `${s.Lesson}|||${date}`;
+        if (!kiLessonMap.has(key)) {
+            kiLessonMap.set(key, { lesson: s.Lesson, date });
+        }
     }
 
-    // 4. Build student rows
+    // Also add Redis quizzes that are tagged as KI (Section = KURIKULUM INDEPENDEN)
+    for (const q of allQuizzes) {
+        const section = (q.section || q.Section || "").toUpperCase();
+        if (!section.includes("KURIKULUM INDEPENDEN")) continue;
+        const key = `${q.lessonName}|||`;
+        if (!kiLessonMap.has(key)) {
+            kiLessonMap.set(key, { lesson: q.lessonName, date: "" });
+        }
+    }
+
+    // Sort master lessons: by lesson name then date
+    const masterLessons = Array.from(kiLessonMap.values()).sort((a, b) => {
+        const nameCompare = a.lesson.localeCompare(b.lesson);
+        if (nameCompare !== 0) return nameCompare;
+        return a.date.localeCompare(b.date);
+    });
+    const totalKI = masterLessons.length;
+
+    // 4. Build per-student KI score lookup: login → Map(LessonKey → scoreEntry)
+    const kiScoreLookup = {};
+    for (const s of kiScores) {
+        const login = s.Login?.toUpperCase();
+        if (!login || !s.Lesson) continue;
+        if (!kiScoreLookup[login]) kiScoreLookup[login] = new Map();
+        const key = `${s.Lesson}|||${s.Date || ""}`;
+        kiScoreLookup[login].set(key, s);
+    }
+
+    // 5. Build student rows
     const rows = [];
     for (const siswa of programSiswa) {
         const login = siswa.login?.toUpperCase();
         if (!login) continue;
 
-        const studentScores = scoreLookup[login] || {};
+        const studentKiMap = kiScoreLookup[login] || new Map();
 
-        // Calculate per-quiz status
-        const quizResults = {};
+        // Build per-lesson detail for popup
         let totalScore = 0;
         let quizzesTaken = 0;
         let quizzesPassed = 0;
         let quizzesFailed = 0;
 
-        for (const quizName of quizNames) {
-            const scoreEntry = studentScores[quizName];
-            const score = scoreEntry ? parseFloat(scoreEntry.Score) || 0 : 0;
-            const taken = scoreEntry && score > 0;
-
-            if (taken) {
+        const quizDetails = masterLessons.map(({ lesson, date }) => {
+            const key = `${lesson}|||${date}`;
+            const entry = studentKiMap.get(key);
+            if (entry) {
+                const score = parseFloat(entry.Score) || 0;
+                const lulus = score >= KKM;
                 totalScore += score;
                 quizzesTaken++;
-                if (score >= 60) {
-                    quizzesPassed++;
-                } else {
-                    quizzesFailed++;
-                }
+                if (lulus) quizzesPassed++;
+                else quizzesFailed++;
+                return {
+                    lesson,
+                    date: entry.Date || date,
+                    score,
+                    status: lulus ? "LULUS" : "TIDAK LULUS",
+                };
             }
-        }
+            return { lesson, date, score: null, status: "BELUM IKUT" };
+        });
 
+        const quizzesNotTaken = totalKI - quizzesTaken;
         const avgScore = quizzesTaken > 0 ? Math.round((totalScore / quizzesTaken) * 10) / 10 : 0;
+        const pctLulus = totalKI > 0 ? Math.round((quizzesPassed / totalKI) * 100) : 0;
+        const pctTidakLulus = totalKI > 0 ? Math.round(((quizzesFailed + quizzesNotTaken) / totalKI) * 100) : 0;
+        const completionPct = totalKI > 0 ? Math.round((quizzesTaken / totalKI) * 100) : 0;
 
-        // Calculate tenure from EffectiveDate (stored in scoreDetail or from programSiswa)
-        const anyScore = Object.values(studentScores)[0];
-        // Prefer ProgramSiswa effectiveDate (populated by Sync EHC)
+        // Calculate tenure
         let effectiveDate = siswa.effectiveDate;
         if (!effectiveDate || effectiveDate === "NOT_FOUND") {
-             effectiveDate = anyScore?.EffectiveDate || "";
+            const anyScore = Object.values(Object.fromEntries(studentKiMap))[0];
+            effectiveDate = anyScore?.EffectiveDate || "";
         }
         const tenure = calculateTenure(effectiveDate);
 
-        // Format Tanggal Masuk (YYYYMMDD to YYYY-MM-DD)
+        // Format tanggal masuk
         let formattedTanggalMasuk = "-";
         if (effectiveDate && effectiveDate.length === 8 && !effectiveDate.includes("/")) {
             formattedTanggalMasuk = `${effectiveDate.substring(0, 4)}-${effectiveDate.substring(4, 6)}-${effectiveDate.substring(6, 8)}`;
@@ -122,7 +156,7 @@ export async function getCurriculumMonitoringData(filters = {}) {
             formattedTanggalMasuk = effectiveDate;
         }
 
-        const row = {
+        rows.push({
             login,
             nama: siswa.namaSiswa || siswa.nama || login.split("@")[0] + " (Belum Sync EHC)",
             programSiswa: siswa.namaProgram || "-",
@@ -135,18 +169,26 @@ export async function getCurriculumMonitoringData(filters = {}) {
             quizzesTaken,
             quizzesPassed,
             quizzesFailed,
-            totalQuizzes: quizNames.length,
-            completionPct: quizNames.length > 0 ? Math.round((quizzesTaken / quizNames.length) * 100) : 0,
-        };
-
-        rows.push(row);
+            quizzesNotTaken,
+            totalQuizzes: totalKI,
+            completionPct,
+            pctLulus,
+            pctTidakLulus,
+            quizDetails, // full detail for popup
+        });
     }
 
-    // 5. Apply filters
+    // 6. Apply filters
     let filtered = rows;
 
     if (filters.year && filters.year > 0) {
         filtered = filtered.filter(r => r.tenure.year === filters.year);
+    }
+
+    if (filters.asmLeader) {
+        filtered = filtered.filter(r =>
+            r.asmLeaderName && r.asmLeaderName.toLowerCase().includes(filters.asmLeader.toLowerCase())
+        );
     }
 
     if (filters.search) {
@@ -163,7 +205,34 @@ export async function getCurriculumMonitoringData(filters = {}) {
     // Sort by nama
     filtered.sort((a, b) => a.nama.localeCompare(b.nama));
 
-    // 6. Summary stats
+    // 7. Year breakdown stats
+    const yearGroups = { 1: [], 2: [], 3: [], 4: [] };
+    for (const r of filtered) {
+        const yr = r.tenure.year;
+        if (yearGroups[yr] !== undefined) yearGroups[yr].push(r);
+        else yearGroups[4].push(r);
+    }
+
+    const yearBreakdown = [1, 2, 3, 4].map(yr => {
+        const group = yearGroups[yr] || [];
+        const sudahIkut = group.filter(r => r.quizzesTaken > 0).length;
+        const avgPctLulus = group.length > 0
+            ? Math.round(group.reduce((sum, r) => sum + r.pctLulus, 0) / group.length)
+            : 0;
+        const avgScore = group.length > 0
+            ? Math.round((group.reduce((sum, r) => sum + r.avgScore, 0) / group.length) * 10) / 10
+            : 0;
+        return {
+            label: yr <= 3 ? `Tahun ${yr}` : `${yr}+ Tahun`,
+            totalSiswa: group.length,
+            sudahIkut,
+            pctPartisipasi: group.length > 0 ? Math.round((sudahIkut / group.length) * 100) : 0,
+            avgPctLulus,
+            avgScore,
+        };
+    }).filter(g => g.totalSiswa > 0);
+
+    // 8. Summary stats
     const summary = {
         totalStudents: filtered.length,
         avgCompletion: filtered.length > 0
@@ -172,11 +241,18 @@ export async function getCurriculumMonitoringData(filters = {}) {
         avgScore: filtered.length > 0
             ? Math.round((filtered.reduce((sum, r) => sum + r.avgScore, 0) / filtered.length) * 10) / 10
             : 0,
+        yearBreakdown,
     };
+
+    // Collect unique ASM leaders for filter dropdown
+    const asmLeaders = [...new Set(
+        rows.map(r => r.asmLeaderName).filter(n => n && n !== "-")
+    )].sort();
 
     return {
         data: filtered,
-        quizNames,
+        masterLessons,    // array of {lesson, date} for popup reference
         summary,
+        asmLeaders,       // for dropdown filter
     };
 }

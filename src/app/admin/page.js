@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
@@ -115,10 +115,13 @@ export default function AdminPage() {
     const [curriculumLoading, setCurriculumLoading] = useState(false);
     const [curriculumYearFilter, setCurriculumYearFilter] = useState(0);
     const [curriculumSearch, setCurriculumSearch] = useState("");
+    const [curriculumAsmFilter, setCurriculumAsmFilter] = useState("");
+    const [curriculumAsmLeaders, setCurriculumAsmLeaders] = useState([]);
     const [curriculumPage, setCurriculumPage] = useState(1);
     const [curriculumExporting, setCurriculumExporting] = useState(false);
     const [ehcSyncing, setEhcSyncing] = useState(false);
     const [ehcSyncResult, setEhcSyncResult] = useState(null);
+    const [studentDetailModal, setStudentDetailModal] = useState(null); // null = closed, object = student row data
 
     // Pega Upload state removed per request
 
@@ -273,20 +276,22 @@ export default function AdminPage() {
     };
 
     // Curriculum Monitoring functions
-    const fetchCurriculumData = async (year, search) => {
+    const fetchCurriculumData = async (year, search, asmLeader) => {
         setCurriculumLoading(true);
         try {
             const params = new URLSearchParams();
             if (year) params.set("year", year);
             if (search) params.set("search", search);
+            if (asmLeader) params.set("asmLeader", asmLeader);
             const res = await fetch(`/api/admin/curriculum-monitoring?${params}`, {
                 headers: { Authorization: authHeader },
             });
             const data = await res.json();
             if (data.success) {
                 setCurriculumData(data.data || []);
-                setCurriculumQuizNames(data.quizNames || []);
+                setCurriculumQuizNames(data.masterLessons ? data.masterLessons.map(l => l.lesson) : (data.quizNames || []));
                 setCurriculumSummary(data.summary || { totalStudents: 0, avgCompletion: 0, avgScore: 0 });
+                if (data.asmLeaders) setCurriculumAsmLeaders(data.asmLeaders);
             }
         } catch (e) { console.error(e); }
         setCurriculumLoading(false);
@@ -298,6 +303,7 @@ export default function AdminPage() {
             const params = new URLSearchParams();
             if (curriculumYearFilter) params.set("year", curriculumYearFilter);
             if (curriculumSearch) params.set("search", curriculumSearch);
+            if (curriculumAsmFilter) params.set("asmLeader", curriculumAsmFilter);
             const res = await fetch(`/api/admin/curriculum-export?${params}`, {
                 headers: { Authorization: authHeader },
             });
@@ -1884,101 +1890,174 @@ export default function AdminPage() {
                         </section>
                     </div>
                 )}
+                {/* ── STUDENT DETAIL MODAL ── */}
+                {studentDetailModal && (
+                    <div
+                        onClick={(e) => { if (e.target === e.currentTarget) setStudentDetailModal(null); }}
+                        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}
+                    >
+                        <div style={{ background: "white", borderRadius: "12px", width: "100%", maxWidth: "820px", maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+                            {/* Modal Header */}
+                            <div style={{ padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "flex-start", background: "linear-gradient(135deg,#667eea,#764ba2)", borderRadius: "12px 12px 0 0", color: "white" }}>
+                                <div>
+                                    <div style={{ fontSize: "1.2rem", fontWeight: 700 }}>🎓 {studentDetailModal.nama}</div>
+                                    <div style={{ fontSize: "0.85rem", opacity: 0.85, marginTop: "4px" }}>{studentDetailModal.login}</div>
+                                    <div style={{ fontSize: "0.8rem", opacity: 0.75, marginTop: "2px" }}>Program: {studentDetailModal.programSiswa} · Batch: {studentDetailModal.batch} · {studentDetailModal.tenure?.label}</div>
+                                    <div style={{ fontSize: "0.8rem", opacity: 0.75 }}>ASM Leader: {studentDetailModal.asmLeaderName}</div>
+                                </div>
+                                <button onClick={() => setStudentDetailModal(null)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "white", borderRadius: "50%", width: "32px", height: "32px", fontSize: "1.1rem", cursor: "pointer", lineHeight: 1 }}>×</button>
+                            </div>
+                            {/* Modal Stats */}
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px", padding: "16px 24px", background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                                {[{label:"Total KI",val:studentDetailModal.totalQuizzes,color:"#667eea"},{label:"Diikuti",val:studentDetailModal.quizzesTaken,color:"#3b82f6"},{label:"Lulus ≥70",val:studentDetailModal.quizzesPassed,color:"#10b981"},{label:"Tidak Lulus",val:studentDetailModal.quizzesFailed,color:"#ef4444"},{label:"Belum Ikut",val:studentDetailModal.quizzesNotTaken,color:"#6b7280"},{label:"% Lulus",val:studentDetailModal.pctLulus+"%",color:"#10b981"},{label:"% TL/TI",val:studentDetailModal.pctTidakLulus+"%",color:"#ef4444"},{label:"Avg Score",val:studentDetailModal.avgScore,color:"#f59e0b"}].map((s,i) => (
+                                    <div key={i} style={{ textAlign: "center", padding: "10px", background: "white", borderRadius: "8px", border: `2px solid ${s.color}22` }}>
+                                        <div style={{ fontSize: "1.4rem", fontWeight: 700, color: s.color }}>{s.val}</div>
+                                        <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: "2px" }}>{s.label}</div>
+                                    </div>
+                                ))}
+                            </div>
+                            {/* Modal Table */}
+                            <div style={{ padding: "16px 24px" }}>
+                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
+                                    <thead>
+                                        <tr style={{ background: "#f3f4f6" }}>
+                                            <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "2px solid #e5e7eb", color: "#374151" }}>No</th>
+                                            <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "2px solid #e5e7eb", color: "#374151" }}>Lesson</th>
+                                            <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", color: "#374151" }}>Tanggal</th>
+                                            <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", color: "#374151" }}>Skor</th>
+                                            <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", color: "#374151" }}>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(studentDetailModal.quizDetails || []).map((qd, i) => (
+                                            <tr key={i} style={{ borderBottom: "1px solid #f3f4f6", background: i % 2 === 0 ? "white" : "#fafafa" }}>
+                                                <td style={{ padding: "8px 12px", color: "#9ca3af" }}>{i + 1}</td>
+                                                <td style={{ padding: "8px 12px", fontWeight: 500, color: "#374151" }}>{qd.lesson}</td>
+                                                <td style={{ padding: "8px 12px", textAlign: "center", color: "#6b7280", fontSize: "0.82rem" }}>{qd.date || "-"}</td>
+                                                <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, color: qd.score === null ? "#d1d5db" : qd.score >= 70 ? "#059669" : "#dc2626" }}>
+                                                    {qd.score !== null ? qd.score : "-"}
+                                                </td>
+                                                <td style={{ padding: "8px 12px", textAlign: "center" }}>
+                                                    <span style={{
+                                                        padding: "3px 10px", borderRadius: "12px", fontSize: "0.78rem", fontWeight: 600,
+                                                        background: qd.status === "LULUS" ? "#d1fae5" : qd.status === "TIDAK LULUS" ? "#fee2e2" : "#f3f4f6",
+                                                        color: qd.status === "LULUS" ? "#059669" : qd.status === "TIDAK LULUS" ? "#dc2626" : "#9ca3af",
+                                                    }}>{qd.status === "LULUS" ? "✅ Lulus" : qd.status === "TIDAK LULUS" ? "❌ Tdk Lulus" : "⬜ Belum Ikut"}</span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {activeTab === "curriculum" && (
                     <div className={styles.content}>
                         <section className={styles.section}>
                             <div className={styles.sectionHeader}>
-                                <h2>📊 Curriculum Monitoring</h2>
+                                <h2>📊 Curriculum Monitoring ({curriculumData.length} siswa)</h2>
                                 <div className={styles.actionBtns}>
-                                    <button
-                                        onClick={runEhcSync}
-                                        disabled={ehcSyncing}
-                                        className={styles.addBtn}
-                                        style={{ background: "#4f46e5" }}
-                                    >
+                                    <button onClick={runEhcSync} disabled={ehcSyncing} className={styles.addBtn} style={{ background: "#4f46e5" }}>
                                         {ehcSyncing ? "Syncing..." : "🔄 Sync EHC Data"}
                                     </button>
-                                    <button
-                                        onClick={exportCurriculumExcel}
-                                        disabled={curriculumExporting}
-                                        className={styles.addBtn}
-                                    >
-                                        {curriculumExporting ? "Exporting..." : "📥 Export Excel"}
+                                    <button onClick={exportCurriculumExcel} disabled={curriculumExporting} className={styles.addBtn}>
+                                        {curriculumExporting ? "Exporting..." : "📥 Export Excel (3 Sheet)"}
                                     </button>
                                 </div>
                             </div>
-                            
+
                             {/* Sync Status */}
                             {ehcSyncResult && (
-                                <div style={{ marginBottom: "20px", padding: "12px", borderRadius: "8px", background: ehcSyncResult.success ? "#d1fae5" : "#fee2e2", color: ehcSyncResult.success ? "#059669" : "#dc2626" }}>
+                                <div style={{ marginBottom: "16px", padding: "12px", borderRadius: "8px", background: ehcSyncResult.success ? "#d1fae5" : "#fee2e2", color: ehcSyncResult.success ? "#059669" : "#dc2626" }}>
                                     {ehcSyncResult.message || ehcSyncResult.error}
                                 </div>
                             )}
 
                             {/* Filter Bar */}
-                            <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap", alignItems: "flex-end" }}>
-                                <div style={{ flex: 1, minWidth: "200px" }}>
+                            <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                                <div style={{ flex: 2, minWidth: "200px" }}>
                                     <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "0.85rem", color: "#374151" }}>🔍 Cari Siswa</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Nama, Login, Program, Batch..."
+                                    <input type="text" placeholder="Nama, Login, Program, Batch..."
                                         value={curriculumSearch}
                                         onChange={(e) => setCurriculumSearch(e.target.value)}
-                                        onKeyDown={(e) => { if (e.key === "Enter") { setCurriculumPage(1); fetchCurriculumData(curriculumYearFilter, curriculumSearch); } }}
+                                        onKeyDown={(e) => { if (e.key === "Enter") { setCurriculumPage(1); fetchCurriculumData(curriculumYearFilter, curriculumSearch, curriculumAsmFilter); } }}
                                         style={{ width: "100%", padding: "10px 14px", border: "2px solid #e0e0e0", borderRadius: "8px", fontSize: "0.95rem" }}
                                     />
+                                </div>
+                                <div style={{ flex: 1, minWidth: "180px" }}>
+                                    <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "0.85rem", color: "#374151" }}>👤 ASM Leader</label>
+                                    <select
+                                        value={curriculumAsmFilter}
+                                        onChange={(e) => { setCurriculumAsmFilter(e.target.value); setCurriculumPage(1); fetchCurriculumData(curriculumYearFilter, curriculumSearch, e.target.value); }}
+                                        style={{ width: "100%", padding: "10px 14px", border: "2px solid #e0e0e0", borderRadius: "8px", fontSize: "0.9rem", background: "white" }}
+                                    >
+                                        <option value="">Semua ASM Leader</option>
+                                        {curriculumAsmLeaders.map((asm, i) => <option key={i} value={asm}>{asm}</option>)}
+                                    </select>
                                 </div>
                                 <div>
                                     <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "0.85rem", color: "#374151" }}>📅 Masa Pelatihan</label>
                                     <div style={{ display: "flex", gap: "6px" }}>
-                                        {[{ val: 0, label: "Semua" }, { val: 1, label: "Tahun 1" }, { val: 2, label: "Tahun 2" }, { val: 3, label: "Tahun 3" }].map(opt => (
-                                            <button
-                                                key={opt.val}
-                                                onClick={() => { setCurriculumYearFilter(opt.val); setCurriculumPage(1); fetchCurriculumData(opt.val, curriculumSearch); }}
-                                                style={{
-                                                    padding: "8px 16px",
-                                                    border: "2px solid",
-                                                    borderColor: curriculumYearFilter === opt.val ? "#667eea" : "#e0e0e0",
-                                                    borderRadius: "8px",
-                                                    cursor: "pointer",
-                                                    background: curriculumYearFilter === opt.val ? "#667eea" : "white",
-                                                    color: curriculumYearFilter === opt.val ? "white" : "#374151",
-                                                    fontWeight: 600,
-                                                    fontSize: "0.85rem",
-                                                }}
-                                            >
-                                                {opt.label}
-                                            </button>
+                                        {[{ val: 0, label: "Semua" }, { val: 1, label: "Thn 1" }, { val: 2, label: "Thn 2" }, { val: 3, label: "Thn 3" }].map(opt => (
+                                            <button key={opt.val}
+                                                onClick={() => { setCurriculumYearFilter(opt.val); setCurriculumPage(1); fetchCurriculumData(opt.val, curriculumSearch, curriculumAsmFilter); }}
+                                                style={{ padding: "10px 14px", border: "2px solid", borderColor: curriculumYearFilter === opt.val ? "#667eea" : "#e0e0e0", borderRadius: "8px", cursor: "pointer", background: curriculumYearFilter === opt.val ? "#667eea" : "white", color: curriculumYearFilter === opt.val ? "white" : "#374151", fontWeight: 600, fontSize: "0.85rem" }}
+                                            >{opt.label}</button>
                                         ))}
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => { setCurriculumPage(1); fetchCurriculumData(curriculumYearFilter, curriculumSearch); }}
-                                    style={{ padding: "10px 20px", background: "#667eea", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: 600 }}
-                                >
-                                    🔄 Refresh
-                                </button>
+                                <button onClick={() => { setCurriculumPage(1); fetchCurriculumData(curriculumYearFilter, curriculumSearch, curriculumAsmFilter); }}
+                                    style={{ padding: "10px 20px", background: "#667eea", color: "white", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: 600, alignSelf: "flex-end" }}
+                                >🔄 Refresh</button>
                             </div>
 
                             {/* Summary Cards */}
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px", marginBottom: "24px" }}>
-                                <div style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", borderRadius: "12px", padding: "20px", color: "white" }}>
-                                    <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>Total Siswa</div>
-                                    <div style={{ fontSize: "2rem", fontWeight: 700 }}>{curriculumSummary.totalStudents}</div>
-                                </div>
-                                <div style={{ background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)", borderRadius: "12px", padding: "20px", color: "white" }}>
-                                    <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>Avg Completion</div>
-                                    <div style={{ fontSize: "2rem", fontWeight: 700 }}>{curriculumSummary.avgCompletion}%</div>
-                                </div>
-                                <div style={{ background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)", borderRadius: "12px", padding: "20px", color: "white" }}>
-                                    <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>Avg Score</div>
-                                    <div style={{ fontSize: "2rem", fontWeight: 700 }}>{curriculumSummary.avgScore}</div>
-                                </div>
-                                <div style={{ background: "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)", borderRadius: "12px", padding: "20px", color: "white" }}>
-                                    <div style={{ fontSize: "0.85rem", opacity: 0.9 }}>Total Quiz</div>
-                                    <div style={{ fontSize: "2rem", fontWeight: 700 }}>{curriculumQuizNames.length}</div>
-                                </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "20px" }}>
+                                {[
+                                    { label: "Total Siswa", val: curriculumSummary.totalStudents, grad: "135deg,#667eea,#764ba2" },
+                                    { label: "Total Lesson KI", val: curriculumQuizNames.length, grad: "135deg,#43e97b,#38f9d7" },
+                                    { label: "Avg Completion", val: curriculumSummary.avgCompletion + "%", grad: "135deg,#f093fb,#f5576c" },
+                                    { label: "Avg Score", val: curriculumSummary.avgScore, grad: "135deg,#4facfe,#00f2fe" },
+                                ].map((c, i) => (
+                                    <div key={i} style={{ background: `linear-gradient(${c.grad})`, borderRadius: "12px", padding: "16px 20px", color: "white" }}>
+                                        <div style={{ fontSize: "0.8rem", opacity: 0.9 }}>{c.label}</div>
+                                        <div style={{ fontSize: "1.8rem", fontWeight: 700 }}>{c.val}</div>
+                                    </div>
+                                ))}
                             </div>
+
+                            {/* Year Breakdown Stats Table */}
+                            {curriculumSummary.yearBreakdown?.length > 0 && (
+                                <div style={{ marginBottom: "20px", overflowX: "auto" }}>
+                                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem", background: "white", borderRadius: "8px", overflow: "hidden", border: "1px solid #e5e7eb" }}>
+                                        <thead>
+                                            <tr style={{ background: "#f8f9fa" }}>
+                                                {["Kelompok", "Jumlah Siswa", "Sudah Ikut KI", "% Partisipasi", "Avg % Lulus", "Avg Score"].map(h => (
+                                                    <th key={h} style={{ padding: "10px 14px", textAlign: "center", fontWeight: 600, color: "#374151", borderBottom: "2px solid #e5e7eb" }}>{h}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {curriculumSummary.yearBreakdown.map((g, i) => (
+                                                <tr key={i} style={{ borderBottom: "1px solid #f3f4f6", background: i % 2 === 0 ? "white" : "#fafafa" }}>
+                                                    <td style={{ padding: "9px 14px", fontWeight: 600, color: "#374151", textAlign: "center" }}>{g.label}</td>
+                                                    <td style={{ padding: "9px 14px", textAlign: "center" }}>{g.totalSiswa}</td>
+                                                    <td style={{ padding: "9px 14px", textAlign: "center" }}>{g.sudahIkut}</td>
+                                                    <td style={{ padding: "9px 14px", textAlign: "center" }}>
+                                                        <span style={{ fontWeight: 700, color: g.pctPartisipasi >= 80 ? "#059669" : g.pctPartisipasi >= 50 ? "#d97706" : "#dc2626" }}>{g.pctPartisipasi}%</span>
+                                                    </td>
+                                                    <td style={{ padding: "9px 14px", textAlign: "center" }}>
+                                                        <span style={{ fontWeight: 700, color: g.avgPctLulus >= 70 ? "#059669" : g.avgPctLulus >= 40 ? "#d97706" : "#dc2626" }}>{g.avgPctLulus}%</span>
+                                                    </td>
+                                                    <td style={{ padding: "9px 14px", textAlign: "center", fontWeight: 600 }}>{g.avgScore}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
 
                             {/* Data Table */}
                             {curriculumLoading ? (
@@ -1988,57 +2067,61 @@ export default function AdminPage() {
                             ) : (
                                 <>
                                     <div style={{ overflowX: "auto", borderRadius: "8px", border: "1px solid #e0e0e0" }}>
-                                        <table className={styles.table} style={{ minWidth: `1400px`, width: "100%" }}>
+                                        <table className={styles.table} style={{ minWidth: "1600px", width: "100%" }}>
                                             <thead>
                                                 <tr>
-                                                    <th style={{ position: "sticky", left: 0, background: "#f7f7f7", zIndex: 2, minWidth: "50px" }}>No</th>
-                                                    <th style={{ position: "sticky", left: "50px", background: "#f7f7f7", zIndex: 2, minWidth: "180px" }}>Nama</th>
+                                                    <th style={{ position: "sticky", left: 0, background: "#f7f7f7", zIndex: 2, minWidth: "45px" }}>No</th>
+                                                    <th style={{ position: "sticky", left: "45px", background: "#f7f7f7", zIndex: 2, minWidth: "180px" }}>Nama</th>
                                                     <th style={{ minWidth: "200px" }}>Login</th>
-                                                    <th style={{ minWidth: "140px" }}>Program Siswa</th>
-                                                    <th style={{ minWidth: "120px" }}>Batch</th>
-                                                    <th style={{ minWidth: "140px" }}>ASM Leader</th>
-                                                    <th style={{ minWidth: "120px" }}>Tanggal Masuk</th>
-                                                    <th style={{ minWidth: "110px" }}>Masa Pelatihan</th>
-                                                    <th style={{ minWidth: "90px" }}>Lulus KI</th>
-                                                    <th style={{ minWidth: "100px" }}>Tidak Lulus KI</th>
-                                                    <th style={{ minWidth: "150px" }}>Persentase Keikutsertaan</th>
+                                                    <th style={{ minWidth: "130px" }}>Program</th>
+                                                    <th style={{ minWidth: "110px" }}>Batch</th>
+                                                    <th style={{ minWidth: "150px" }}>ASM Leader</th>
+                                                    <th style={{ minWidth: "115px" }}>Tgl Masuk</th>
+                                                    <th style={{ minWidth: "95px" }}>Masa Plthn</th>
+                                                    <th style={{ minWidth: "80px", textAlign: "center" }}>Total KI</th>
+                                                    <th style={{ minWidth: "75px", textAlign: "center" }}>Diikuti</th>
+                                                    <th style={{ minWidth: "80px", textAlign: "center" }}>Lulus ≥70</th>
+                                                    <th style={{ minWidth: "90px", textAlign: "center" }}>Tdk Lulus</th>
+                                                    <th style={{ minWidth: "80px", textAlign: "center" }}>Blm Ikut</th>
+                                                    <th style={{ minWidth: "90px", textAlign: "center" }}>% Lulus</th>
+                                                    <th style={{ minWidth: "90px", textAlign: "center" }}>% TL/TI</th>
+                                                    <th style={{ minWidth: "90px", textAlign: "center" }}>Avg Score</th>
+                                                    <th style={{ minWidth: "75px", textAlign: "center" }}>Detail</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {paginate(curriculumData, curriculumPage).map((row, idx) => (
-                                                    <tr key={idx}>
-                                                        <td style={{ position: "sticky", left: 0, background: "white", zIndex: 1 }}>{(curriculumPage - 1) * ITEMS_PER_PAGE + idx + 1}</td>
-                                                        <td style={{ position: "sticky", left: "50px", background: "white", zIndex: 1, fontWeight: 600 }}>{row.nama}</td>
-                                                        <td><span style={{ fontSize: "0.85rem", color: "#6b7280" }}>{row.login}</span></td>
-                                                        <td>{row.programSiswa}</td>
-                                                        <td>{row.batch}</td>
-                                                        <td><span style={{ fontSize: "0.85rem", color: "#6b7280" }}>{row.asmLeaderName}</span></td>
-                                                        <td><span style={{ fontSize: "0.85rem", color: "#6b7280", fontWeight: 500 }}>{row.tanggalMasuk}</span></td>
+                                                    <tr key={idx} style={{ background: idx % 2 === 0 ? "white" : "#fafafa" }}>
+                                                        <td style={{ position: "sticky", left: 0, background: idx % 2 === 0 ? "white" : "#fafafa", zIndex: 1 }}>{(curriculumPage - 1) * ITEMS_PER_PAGE + idx + 1}</td>
+                                                        <td style={{ position: "sticky", left: "45px", background: idx % 2 === 0 ? "white" : "#fafafa", zIndex: 1, fontWeight: 600, cursor: "pointer", color: "#4f46e5", textDecoration: "underline dotted" }}
+                                                            onClick={() => setStudentDetailModal(row)}>{row.nama}</td>
+                                                        <td><span style={{ fontSize: "0.82rem", color: "#6b7280" }}>{row.login}</span></td>
+                                                        <td style={{ fontSize: "0.88rem" }}>{row.programSiswa}</td>
+                                                        <td style={{ fontSize: "0.88rem" }}>{row.batch}</td>
+                                                        <td><span style={{ fontSize: "0.82rem", color: "#6b7280" }}>{row.asmLeaderName}</span></td>
+                                                        <td><span style={{ fontSize: "0.82rem", color: "#6b7280", fontWeight: 500 }}>{row.tanggalMasuk}</span></td>
                                                         <td>
-                                                            <span style={{
-                                                                padding: "4px 10px",
-                                                                borderRadius: "20px",
-                                                                fontSize: "0.8rem",
-                                                                fontWeight: 600,
+                                                            <span style={{ padding: "3px 9px", borderRadius: "12px", fontSize: "0.78rem", fontWeight: 600,
                                                                 background: row.tenure.year === 1 ? "#dbeafe" : row.tenure.year === 2 ? "#fef3c7" : row.tenure.year === 3 ? "#fce7f3" : "#f3f4f6",
-                                                                color: row.tenure.year === 1 ? "#1d4ed8" : row.tenure.year === 2 ? "#b45309" : row.tenure.year === 3 ? "#be185d" : "#6b7280",
-                                                            }}>
-                                                                {row.tenure.label}
-                                                            </span>
+                                                                color: row.tenure.year === 1 ? "#1d4ed8" : row.tenure.year === 2 ? "#b45309" : row.tenure.year === 3 ? "#be185d" : "#6b7280" }}
+                                                            >{row.tenure.label}</span>
                                                         </td>
-                                                        <td style={{ fontWeight: 600, color: row.quizzesPassed > 0 ? "#059669" : "#9ca3af" }}>
-                                                            {row.quizzesPassed > 0 ? `${row.quizzesPassed} Modul` : "-"}
+                                                        <td style={{ textAlign: "center", fontWeight: 600, color: "#374151" }}>{row.totalQuizzes}</td>
+                                                        <td style={{ textAlign: "center", fontWeight: 600, color: row.quizzesTaken > 0 ? "#3b82f6" : "#9ca3af" }}>{row.quizzesTaken}</td>
+                                                        <td style={{ textAlign: "center", fontWeight: 700, color: row.quizzesPassed > 0 ? "#059669" : "#9ca3af" }}>{row.quizzesPassed}</td>
+                                                        <td style={{ textAlign: "center", fontWeight: 700, color: row.quizzesFailed > 0 ? "#dc2626" : "#9ca3af" }}>{row.quizzesFailed}</td>
+                                                        <td style={{ textAlign: "center", color: row.quizzesNotTaken > 0 ? "#6b7280" : "#9ca3af" }}>{row.quizzesNotTaken}</td>
+                                                        <td style={{ textAlign: "center" }}>
+                                                            <span style={{ fontWeight: 700, fontSize: "0.9rem", color: row.pctLulus >= 70 ? "#059669" : row.pctLulus >= 40 ? "#d97706" : "#dc2626" }}>{row.pctLulus}%</span>
                                                         </td>
-                                                        <td style={{ fontWeight: 600, color: row.quizzesFailed > 0 ? "#dc2626" : "#9ca3af" }}>
-                                                            {row.quizzesFailed > 0 ? `${row.quizzesFailed} Modul` : "-"}
+                                                        <td style={{ textAlign: "center" }}>
+                                                            <span style={{ fontWeight: 700, fontSize: "0.9rem", color: row.pctTidakLulus >= 60 ? "#dc2626" : row.pctTidakLulus >= 30 ? "#d97706" : "#059669" }}>{row.pctTidakLulus}%</span>
                                                         </td>
-                                                        <td>
-                                                            <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: "120px" }}>
-                                                                <div style={{ flex: 1, height: "8px", background: "#e5e7eb", borderRadius: "4px", overflow: "hidden" }}>
-                                                                    <div style={{ width: `${row.completionPct}%`, height: "100%", background: row.completionPct >= 80 ? "#10b981" : row.completionPct >= 40 ? "#f59e0b" : "#ef4444", borderRadius: "4px", transition: "width 0.3s" }} />
-                                                                </div>
-                                                                <span style={{ fontSize: "0.75rem", fontWeight: 600, minWidth: "40px" }}>{row.completionPct}%</span>
-                                                            </div>
+                                                        <td style={{ textAlign: "center", fontWeight: 600, color: row.avgScore >= 70 ? "#059669" : row.avgScore > 0 ? "#d97706" : "#9ca3af" }}>{row.avgScore || "-"}</td>
+                                                        <td style={{ textAlign: "center" }}>
+                                                            <button onClick={() => setStudentDetailModal(row)}
+                                                                style={{ background: "#667eea", color: "white", border: "none", padding: "5px 10px", borderRadius: "6px", cursor: "pointer", fontSize: "0.8rem" }}
+                                                            >🔍 Detail</button>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -2047,7 +2130,15 @@ export default function AdminPage() {
                                     </div>
                                     <div className={styles.pagination}>
                                         <button disabled={curriculumPage === 1} onClick={() => setCurriculumPage(p => p - 1)}>« Prev</button>
-                                        <span>Halaman {curriculumPage} dari {getTotalPages(curriculumData)} ({curriculumData.length} siswa)</span>
+                                        <span style={{ display: "flex", alignItems: "center" }}>
+                                            Halaman
+                                            <input type="number" value={curriculumPage}
+                                                onChange={(e) => { let p = parseInt(e.target.value); const total = getTotalPages(curriculumData); if (!isNaN(p)) { if (p < 1) p = 1; if (p > total) p = total; setCurriculumPage(p); } }}
+                                                style={{ width: "65px", margin: "0 8px", padding: "4px 8px", textAlign: "center", borderRadius: "4px", border: "2px solid #e5e7eb" }}
+                                                min="1" max={getTotalPages(curriculumData)}
+                                            />
+                                            dari {getTotalPages(curriculumData)} ({curriculumData.length} siswa)
+                                        </span>
                                         <button disabled={curriculumPage >= getTotalPages(curriculumData)} onClick={() => setCurriculumPage(p => p + 1)}>Next »</button>
                                     </div>
                                 </>
@@ -2055,7 +2146,7 @@ export default function AdminPage() {
 
                             {/* Legend */}
                             <div style={{ marginTop: "16px", padding: "12px", background: "#f9fafb", borderRadius: "8px", fontSize: "0.8rem", color: "#6b7280" }}>
-                                <strong>Keterangan:</strong> Modul Lulus (Score ≥ 60), Tidak Lulus (Score &lt; 60). Masa Pelatihan dan Tanggal Masuk dibaca dari EHC. Jika Kosong / N/A, gunakan fitur "Sync EHC Data".
+                                <strong>Keterangan:</strong> KKM = 70 · Lesson bersumber dari Section KURIKULUM INDEPENDEN · Klik nama siswa atau tombol 🔍 untuk melihat detail per lesson · Jika ASM Leader / Tgl Masuk kosong, gunakan fitur "Sync EHC Data".
                             </div>
                         </section>
                     </div>
@@ -2065,3 +2156,4 @@ export default function AdminPage() {
         </main>
     );
 }
+

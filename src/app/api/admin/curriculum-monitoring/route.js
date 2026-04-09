@@ -16,8 +16,9 @@ export async function GET(request) {
         const { searchParams } = new URL(request.url);
         const year = parseInt(searchParams.get("year")) || 0;
         const search = searchParams.get("search") || "";
+        const asmLeader = searchParams.get("asmLeader") || "";
 
-        const result = await getCurriculumMonitoringData({ year, search });
+        const result = await getCurriculumMonitoringData({ year, search, asmLeader });
 
         return NextResponse.json({
             success: true,

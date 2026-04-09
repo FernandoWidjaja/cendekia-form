@@ -315,6 +315,74 @@ export async function deleteScoreDetail(login, lesson) {
 }
 
 /**
+ * Bulk save ScoreDetails - OPTIMIZED: 1 read + 1 write instead of N reads + N writes
+ * @param {Array} dataArray - Array of { scoreData, isASM }
+ * @returns {object} { success, imported, errors[] }
+ */
+export async function bulkSaveScoreDetails(dataArray) {
+    try {
+        const key = buildKey(ENTITIES.SCORE_DETAIL);
+        const allScores = await redis.get(key) || [];
+        const errors = [];
+        let imported = 0;
+
+        for (let i = 0; i < dataArray.length; i++) {
+            const { scoreData, isASM } = dataArray[i];
+            const rowNum = i + 2;
+
+            if (!scoreData.Login || !scoreData.Lesson) {
+                errors.push({ row: rowNum, error: "Login atau Lesson kosong" });
+                continue;
+            }
+
+            const login = scoreData.Login.toUpperCase();
+            const lesson = scoreData.Lesson;
+            const dataToSave = { ...scoreData, Login: login, isASM: isASM || false };
+
+            const index = allScores.findIndex(s => s.Login === login && s.Lesson === lesson);
+            if (index >= 0) {
+                allScores[index] = dataToSave;
+            } else {
+                allScores.push(dataToSave);
+            }
+            imported++;
+        }
+
+        await redis.set(key, allScores);
+        return { success: errors.length === 0, imported, errors };
+    } catch (error) {
+        console.error("bulkSaveScoreDetails error:", error);
+        return { success: false, imported: 0, errors: [{ row: 0, error: error.message }] };
+    }
+}
+
+/**
+ * Bulk delete ScoreDetails - OPTIMIZED: 1 read + 1 write instead of N reads + N writes
+ * @param {Array} items - Array of { login, lesson }
+ * @returns {object} { success, deleted }
+ */
+export async function bulkDeleteScoreDetails(items) {
+    try {
+        const key = buildKey(ENTITIES.SCORE_DETAIL);
+        const allScores = await redis.get(key) || [];
+
+        const deleteSet = new Set(
+            items.map(i => `${i.login.toUpperCase()}|||${i.lesson}`)
+        );
+
+        const filtered = allScores.filter(
+            s => !deleteSet.has(`${s.Login}|||${s.Lesson}`)
+        );
+
+        await redis.set(key, filtered);
+        return { success: true, deleted: allScores.length - filtered.length };
+    } catch (error) {
+        console.error("bulkDeleteScoreDetails error:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Update ScoreDetail fields by Login and Lesson
  * @param {string} login - User login
  * @param {string} lesson - Original lesson name (used as identifier)

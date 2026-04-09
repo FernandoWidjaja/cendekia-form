@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllScoreDetails, deleteScoreDetail, updateScoreDetail, saveScoreDetail } from "@/lib/program-store";
+import { getAllScoreDetails, deleteScoreDetail, updateScoreDetail, bulkSaveScoreDetails, bulkDeleteScoreDetails } from "@/lib/program-store";
 import { adminLimiter, getIP, checkRateLimit } from "@/lib/rate-limiter";
 
 // Admin credentials
@@ -46,8 +46,15 @@ export async function DELETE(request) {
     }
 
     const body = await request.json();
-    const { login, lesson } = body;
+    const { login, lesson, bulk } = body;
 
+    // Bulk delete mode
+    if (bulk && Array.isArray(bulk)) {
+        const result = await bulkDeleteScoreDetails(bulk);
+        return NextResponse.json(result);
+    }
+
+    // Single delete mode
     if (!login || !lesson) {
         return NextResponse.json({ error: "login dan lesson wajib diisi" }, { status: 400 });
     }
@@ -90,45 +97,29 @@ export async function POST(request) {
         return NextResponse.json({ error: "Format: { bulk: [...] }" }, { status: 400 });
     }
 
-    const errors = [];
-    let imported = 0;
-
-    for (let i = 0; i < body.bulk.length; i++) {
-        const row = body.bulk[i];
-        const rowNum = i + 2; // Excel row number (header = row 1)
-
-        if (!row.Login || !row.Lesson) {
-            errors.push({ row: rowNum, error: "Login atau Lesson kosong" });
-            continue;
-        }
-
-        const scoreData = {
-            Login: row.Login.toUpperCase(),
+    // Transform rows into the format expected by bulkSaveScoreDetails
+    const dataArray = body.bulk.map(row => ({
+        scoreData: {
+            Login: (row.Login || "").toUpperCase(),
             Batch: row.Batch || "",
             EvaluationYearSequence: row.EvaluationYearSequence || "",
             NamaProgram: row.NamaProgram || "",
             Section: row.Section || "KURIKULUM INDEPENDEN",
-            Lesson: row.Lesson,
+            Lesson: row.Lesson || "",
             Score: String(row.Score || "0"),
             Date: row.Date || "",
             SubmitTime: row.SubmitTime || "",
             Description: row.Description || "",
-        };
+        },
+        isASM: row.isASM === true || row.isASM === "true" || row.isASM === "TRUE",
+    }));
 
-        const isASM = row.isASM === true || row.isASM === "true" || row.isASM === "TRUE";
-        const result = await saveScoreDetail(scoreData, isASM);
-
-        if (result.success) {
-            imported++;
-        } else {
-            errors.push({ row: rowNum, error: result.error });
-        }
-    }
+    const result = await bulkSaveScoreDetails(dataArray);
 
     return NextResponse.json({
-        success: errors.length === 0,
-        imported,
+        success: result.success,
+        imported: result.imported,
         total: body.bulk.length,
-        errors,
+        errors: result.errors,
     });
 }

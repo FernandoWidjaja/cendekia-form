@@ -446,14 +446,15 @@ export default function AdminPage() {
     const bulkDeleteScores = async () => {
         if (selectedScores.length === 0) return alert("Pilih score dulu");
         if (!confirm(`Hapus ${selectedScores.length} score?`)) return;
-        for (const item of selectedScores) {
+        const bulk = selectedScores.map(item => {
             const [login, lesson] = item.split("|||");
-            await fetch("/api/admin/scoredetail", {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json", Authorization: authHeader },
-                body: JSON.stringify({ login, lesson }),
-            });
-        }
+            return { login, lesson };
+        });
+        await fetch("/api/admin/scoredetail", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json", Authorization: authHeader },
+            body: JSON.stringify({ bulk }),
+        });
         setSelectedScores([]);
         fetchScoreDetails();
     };

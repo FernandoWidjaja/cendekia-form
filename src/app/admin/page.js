@@ -1890,68 +1890,7 @@ export default function AdminPage() {
                         </section>
                     </div>
                 )}
-                {/* ── STUDENT DETAIL MODAL ── */}
-                {studentDetailModal && (
-                    <div
-                        onClick={(e) => { if (e.target === e.currentTarget) setStudentDetailModal(null); }}
-                        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}
-                    >
-                        <div style={{ background: "white", borderRadius: "12px", width: "100%", maxWidth: "820px", maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
-                            {/* Modal Header */}
-                            <div style={{ padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "flex-start", background: "linear-gradient(135deg,#667eea,#764ba2)", borderRadius: "12px 12px 0 0", color: "white" }}>
-                                <div>
-                                    <div style={{ fontSize: "1.2rem", fontWeight: 700 }}>🎓 {studentDetailModal.nama}</div>
-                                    <div style={{ fontSize: "0.85rem", opacity: 0.85, marginTop: "4px" }}>{studentDetailModal.login}</div>
-                                    <div style={{ fontSize: "0.8rem", opacity: 0.75, marginTop: "2px" }}>Program: {studentDetailModal.programSiswa} · Batch: {studentDetailModal.batch} · {studentDetailModal.tenure?.label}</div>
-                                    <div style={{ fontSize: "0.8rem", opacity: 0.75 }}>ASM Leader: {studentDetailModal.asmLeaderName}</div>
-                                </div>
-                                <button onClick={() => setStudentDetailModal(null)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "white", borderRadius: "50%", width: "32px", height: "32px", fontSize: "1.1rem", cursor: "pointer", lineHeight: 1 }}>×</button>
-                            </div>
-                            {/* Modal Stats */}
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px", padding: "16px 24px", background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                                {[{label:"Total KI",val:studentDetailModal.totalQuizzes,color:"#667eea"},{label:"Diikuti",val:studentDetailModal.quizzesTaken,color:"#3b82f6"},{label:"Lulus ≥70",val:studentDetailModal.quizzesPassed,color:"#10b981"},{label:"Tidak Lulus",val:studentDetailModal.quizzesFailed,color:"#ef4444"},{label:"Belum Ikut",val:studentDetailModal.quizzesNotTaken,color:"#6b7280"},{label:"% Lulus",val:studentDetailModal.pctLulus+"%",color:"#10b981"},{label:"% TL/TI",val:studentDetailModal.pctTidakLulus+"%",color:"#ef4444"},{label:"Avg Score",val:studentDetailModal.avgScore,color:"#f59e0b"}].map((s,i) => (
-                                    <div key={i} style={{ textAlign: "center", padding: "10px", background: "white", borderRadius: "8px", border: `2px solid ${s.color}22` }}>
-                                        <div style={{ fontSize: "1.4rem", fontWeight: 700, color: s.color }}>{s.val}</div>
-                                        <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: "2px" }}>{s.label}</div>
-                                    </div>
-                                ))}
-                            </div>
-                            {/* Modal Table */}
-                            <div style={{ padding: "16px 24px" }}>
-                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
-                                    <thead>
-                                        <tr style={{ background: "#f3f4f6" }}>
-                                            <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "2px solid #e5e7eb", color: "#374151" }}>No</th>
-                                            <th style={{ padding: "10px 12px", textAlign: "left", borderBottom: "2px solid #e5e7eb", color: "#374151" }}>Lesson</th>
-                                            <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", color: "#374151" }}>Tanggal</th>
-                                            <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", color: "#374151" }}>Skor</th>
-                                            <th style={{ padding: "10px 12px", textAlign: "center", borderBottom: "2px solid #e5e7eb", color: "#374151" }}>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(studentDetailModal.quizDetails || []).map((qd, i) => (
-                                            <tr key={i} style={{ borderBottom: "1px solid #f3f4f6", background: i % 2 === 0 ? "white" : "#fafafa" }}>
-                                                <td style={{ padding: "8px 12px", color: "#9ca3af" }}>{i + 1}</td>
-                                                <td style={{ padding: "8px 12px", fontWeight: 500, color: "#374151" }}>{qd.lesson}</td>
-                                                <td style={{ padding: "8px 12px", textAlign: "center", color: "#6b7280", fontSize: "0.82rem" }}>{qd.date || "-"}</td>
-                                                <td style={{ padding: "8px 12px", textAlign: "center", fontWeight: 700, color: qd.score === null ? "#d1d5db" : qd.score >= 70 ? "#059669" : "#dc2626" }}>
-                                                    {qd.score !== null ? qd.score : "-"}
-                                                </td>
-                                                <td style={{ padding: "8px 12px", textAlign: "center" }}>
-                                                    <span style={{
-                                                        padding: "3px 10px", borderRadius: "12px", fontSize: "0.78rem", fontWeight: 600,
-                                                        background: qd.status === "LULUS" ? "#d1fae5" : qd.status === "TIDAK LULUS" ? "#fee2e2" : "#f3f4f6",
-                                                        color: qd.status === "LULUS" ? "#059669" : qd.status === "TIDAK LULUS" ? "#dc2626" : "#9ca3af",
-                                                    }}>{qd.status === "LULUS" ? "✅ Lulus" : qd.status === "TIDAK LULUS" ? "❌ Tdk Lulus" : "⬜ Belum Ikut"}</span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
+
 
                 {activeTab === "curriculum" && (
                     <div className={styles.content}>
@@ -2153,21 +2092,33 @@ export default function AdminPage() {
                 )}
                 {/* Student Detail Modal */}
                 {studentDetailModal && (
-                    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", justifyContent: "center", alignItems: "center", padding: "20px" }} onClick={() => setStudentDetailModal(null)}>
-                        <div style={{ background: "white", padding: "24px", borderRadius: "12px", width: "100%", maxWidth: "800px", maxHeight: "90vh", overflowY: "auto", position: "relative" }} onClick={e => e.stopPropagation()}>
-                            <button onClick={() => setStudentDetailModal(null)} style={{ position: "absolute", top: "16px", right: "20px", background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: "#6b7280" }}>&times;</button>
-                            <h2 style={{ marginBottom: "8px", color: "#1f2937", borderBottom: "2px solid #e5e7eb", paddingBottom: "12px" }}>Informasi Siswa</h2>
-                            
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "20px", fontSize: "0.95rem" }}>
-                                <div><strong>Nama:</strong> {studentDetailModal.nama}</div>
-                                <div><strong>Login:</strong> {studentDetailModal.login}</div>
-                                <div><strong>Program:</strong> {studentDetailModal.programSiswa}</div>
-                                <div><strong>ASM Leader:</strong> {studentDetailModal.asmLeaderName}</div>
-                                <div><strong>Tgl Masuk:</strong> {studentDetailModal.tanggalMasuk}</div>
-                                <div><strong>Masa Pelatihan:</strong> <span style={{ color: "#3b82f6", fontWeight: "bold" }}>{studentDetailModal.tenure.label}</span></div>
+                    <div
+                        onClick={(e) => { if (e.target === e.currentTarget) setStudentDetailModal(null); }}
+                        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}
+                    >
+                        <div style={{ background: "white", borderRadius: "12px", width: "100%", maxWidth: "820px", maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+                            {/* Modal Header */}
+                            <div style={{ padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "flex-start", background: "linear-gradient(135deg,#667eea,#764ba2)", borderRadius: "12px 12px 0 0", color: "white" }}>
+                                <div>
+                                    <div style={{ fontSize: "1.2rem", fontWeight: 700 }}>🎓 {studentDetailModal.nama}</div>
+                                    <div style={{ fontSize: "0.85rem", opacity: 0.85, marginTop: "4px" }}>{studentDetailModal.login}</div>
+                                    <div style={{ fontSize: "0.8rem", opacity: 0.75, marginTop: "2px" }}>Program: {studentDetailModal.programSiswa} · Batch: {studentDetailModal.batch} · {studentDetailModal.tenure?.label}</div>
+                                    <div style={{ fontSize: "0.8rem", opacity: 0.75 }}>ASM Leader: {studentDetailModal.asmLeaderName}</div>
+                                </div>
+                                <button onClick={() => setStudentDetailModal(null)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "white", borderRadius: "50%", width: "32px", height: "32px", fontSize: "1.1rem", cursor: "pointer", lineHeight: 1 }}>×</button>
                             </div>
-
-                            <h3 style={{ marginBottom: "12px", color: "#374151" }}>Detail Lulus KI</h3>
+                            {/* Modal Stats */}
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px", padding: "16px 24px", background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                                {[{label:"Total KI",val:studentDetailModal.totalQuizzes,color:"#667eea"},{label:"Diikuti",val:studentDetailModal.quizzesTaken,color:"#3b82f6"},{label:"Lulus ≥70",val:studentDetailModal.quizzesPassed,color:"#10b981"},{label:"Tidak Lulus",val:studentDetailModal.quizzesFailed,color:"#ef4444"},{label:"Belum Ikut",val:studentDetailModal.quizzesNotTaken,color:"#6b7280"},{label:"% Lulus",val:studentDetailModal.pctLulus+"%",color:"#10b981"},{label:"% TL/TI",val:studentDetailModal.pctTidakLulus+"%",color:"#ef4444"},{label:"Avg Score",val:studentDetailModal.avgScore,color:"#f59e0b"}].map((s,i) => (
+                                    <div key={i} style={{ textAlign: "center", padding: "10px", background: "white", borderRadius: "8px", border: `2px solid ${s.color}22` }}>
+                                        <div style={{ fontSize: "1.4rem", fontWeight: 700, color: s.color }}>{s.val}</div>
+                                        <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: "2px" }}>{s.label}</div>
+                                    </div>
+                                ))}
+                            </div>
+                            {/* Detail List */}
+                            <div style={{ padding: "16px 24px" }}>
+                                <h3 style={{ marginBottom: "12px", color: "#374151" }}>Detail Lulus KI</h3>
                             
                             {["Tahun 1", "Tahun 2", "Tahun 3", "Belum Ikut"].map(yrGroup => {
                                 const lessonsInGroup = studentDetailModal.quizDetails?.filter(q => q.takenYear === yrGroup || (!q.takenYear && yrGroup === "Belum Ikut")) || [];
@@ -2207,6 +2158,7 @@ export default function AdminPage() {
                                     </div>
                                 );
                             })}
+                            </div>
                         </div>
                     </div>
                 )}

@@ -2124,10 +2124,14 @@ export default function AdminPage() {
                                 const lessonsInGroup = studentDetailModal.quizDetails?.filter(q => q.takenYear === yrGroup || (!q.takenYear && yrGroup === "Belum Ikut")) || [];
                                 if (lessonsInGroup.length === 0) return null;
                                 
+                                const scores = lessonsInGroup.filter(q => q.score !== null).map(q => q.score);
+                                const groupAvg = scores.length > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null;
+                                
                                 return (
                                     <div key={yrGroup} style={{ marginBottom: "20px", border: "1px solid #e5e7eb", borderRadius: "8px", overflow: "hidden" }}>
-                                        <div style={{ background: "#f3f4f6", padding: "10px 16px", fontWeight: "bold", color: "#374151", borderBottom: "1px solid #e5e7eb" }}>
-                                            Group: {yrGroup === "Belum Ikut" ? "Belum Diikuti" : yrGroup} ({lessonsInGroup.length} Lesson)
+                                        <div style={{ background: "#f3f4f6", padding: "10px 16px", fontWeight: "bold", color: "#374151", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between" }}>
+                                            <span>Group: {yrGroup === "Belum Ikut" ? "Belum Diikuti" : yrGroup} ({lessonsInGroup.length} Lesson)</span>
+                                            {groupAvg !== null && <span style={{ color: "#059669", background: "#d1fae5", padding: "2px 8px", borderRadius: "12px", fontSize: "0.8rem" }}>Avg Score: {groupAvg}</span>}
                                         </div>
                                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                                             <thead style={{ background: "#f9fafb" }}>

@@ -107,10 +107,15 @@ export async function getCurriculumMonitoringData(filters = {}) {
 
         const studentKiMap = kiScoreLookup[login] || new Map();
 
+        // Check if student is active based on sync data from EHC
+        if (siswa.effectiveDate === "NOT_FOUND") {
+            continue; // Skip inactive student
+        }
+
         // Build per-lesson detail for popup
         // Calculate tenure and student start date first
         let effectiveDate = siswa.effectiveDate;
-        if (!effectiveDate || effectiveDate === "NOT_FOUND") {
+        if (!effectiveDate) {
             const anyScore = Object.values(Object.fromEntries(studentKiMap))[0];
             effectiveDate = anyScore?.EffectiveDate || "";
         }
@@ -134,9 +139,35 @@ export async function getCurriculumMonitoringData(filters = {}) {
         let quizzesPassed = 0;
         let quizzesFailed = 0;
 
-        const quizDetails = masterLessons.map(({ lesson, date }) => {
+        const quizDetails = [];
+
+        masterLessons.forEach(({ lesson, date }) => {
             const key = `${lesson}|||${date}`;
             const entry = studentKiMap.get(key);
+            
+            // Check KI date vs Start Date
+            const qDate = entry ? (entry.Date || date) : date;
+            let kiDateObj = null;
+            if (qDate && qDate.length === 8) {
+                kiDateObj = new Date(parseInt(qDate.slice(0, 4)), parseInt(qDate.slice(4, 6)) - 1, parseInt(qDate.slice(6, 8)));
+            } else if (qDate && qDate.includes("/")) {
+                const [dd, mm, yyyy] = qDate.split("/");
+                kiDateObj = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+            }
+
+            // Exclude KI if it was published before the student joined
+            if (startDateObj && kiDateObj && !isNaN(startDateObj.getTime()) && !isNaN(kiDateObj.getTime())) {
+                if (kiDateObj < startDateObj) return; // SKIP this KI
+            }
+            
+            let takenYear = "Belum Ikut";
+            if (startDateObj && kiDateObj && !isNaN(startDateObj.getTime()) && !isNaN(kiDateObj.getTime())) {
+                const diffDays = Math.floor((kiDateObj - startDateObj) / (1000 * 60 * 60 * 24));
+                if (diffDays <= 365) takenYear = "Tahun 1";
+                else if (diffDays <= 730) takenYear = "Tahun 2";
+                else takenYear = "Tahun 3";
+            }
+
             if (entry) {
                 const score = parseFloat(entry.Score) || 0;
                 const lulus = score >= KKM;
@@ -145,39 +176,24 @@ export async function getCurriculumMonitoringData(filters = {}) {
                 if (lulus) quizzesPassed++;
                 else quizzesFailed++;
 
-                const qDate = entry.Date || date;
-                let takenYear = "-";
-                let kiDateObj = null;
-                if (qDate && qDate.length === 8) {
-                    kiDateObj = new Date(parseInt(qDate.slice(0, 4)), parseInt(qDate.slice(4, 6)) - 1, parseInt(qDate.slice(6, 8)));
-                } else if (qDate && qDate.includes("/")) {
-                    const [dd, mm, yyyy] = qDate.split("/");
-                    kiDateObj = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
-                }
-
-                if (startDateObj && kiDateObj && !isNaN(startDateObj.getTime()) && !isNaN(kiDateObj.getTime())) {
-                    const diffDays = Math.floor((kiDateObj - startDateObj) / (1000 * 60 * 60 * 24));
-                    if (diffDays <= 365) takenYear = "Tahun 1";
-                    else if (diffDays <= 730) takenYear = "Tahun 2";
-                    else takenYear = "Tahun 3";
-                }
-
-                return {
+                quizDetails.push({
                     lesson,
                     date: qDate,
                     score,
                     status: lulus ? "LULUS" : "TIDAK LULUS",
                     takenYear
-                };
+                });
+            } else {
+                quizDetails.push({ lesson, date, score: null, status: "BELUM IKUT", takenYear });
             }
-            return { lesson, date, score: null, status: "BELUM IKUT", takenYear: "Belum Ikut" };
         });
 
-        const quizzesNotTaken = totalKI - quizzesTaken;
+        const activeTotalKI = quizDetails.length;
+        const quizzesNotTaken = activeTotalKI - quizzesTaken;
         const avgScore = quizzesTaken > 0 ? Math.round((totalScore / quizzesTaken) * 10) / 10 : 0;
-        const pctLulus = totalKI > 0 ? Math.round((quizzesPassed / totalKI) * 100) : 0;
-        const pctTidakLulus = totalKI > 0 ? Math.round(((quizzesFailed + quizzesNotTaken) / totalKI) * 100) : 0;
-        const completionPct = totalKI > 0 ? Math.round((quizzesTaken / totalKI) * 100) : 0;
+        const pctLulus = activeTotalKI > 0 ? Math.round((quizzesPassed / activeTotalKI) * 100) : 0;
+        const pctTidakLulus = activeTotalKI > 0 ? Math.round(((quizzesFailed + quizzesNotTaken) / activeTotalKI) * 100) : 0;
+        const completionPct = activeTotalKI > 0 ? Math.round((quizzesTaken / activeTotalKI) * 100) : 0;
 
         // Format tanggal masuk
         let formattedTanggalMasuk = "-";
@@ -201,7 +217,7 @@ export async function getCurriculumMonitoringData(filters = {}) {
             quizzesPassed,
             quizzesFailed,
             quizzesNotTaken,
-            totalQuizzes: totalKI,
+            totalQuizzes: activeTotalKI,
             completionPct,
             pctLulus,
             pctTidakLulus,

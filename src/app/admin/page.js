@@ -487,9 +487,12 @@ export default function AdminPage() {
                 const data = await res.json();
 
                 if (data.success || data.imported > 0) {
+                    if (data.errors?.length) {
+                        console.error("Harap periksa data Excel Anda, ada baris yang gagal diupload:", data.errors);
+                    }
                     setScoreUploadStatus({
                         type: "success",
-                        message: `Berhasil import ${data.imported} dari ${data.total} data.${data.errors?.length ? ` (${data.errors.length} error)` : ""}`,
+                        message: `Berhasil import ${data.imported} dari ${data.total} data.${data.errors?.length ? ` (${data.errors.length} error, lihat Console/F12 untuk detail baris)` : ""}`,
                     });
                     fetchScoreDetails();
                 } else {
@@ -1671,7 +1674,26 @@ export default function AdminPage() {
                                     {getFilteredSortedScores().length > ITEMS_PER_PAGE && (
                                         <div className={styles.pagination}>
                                             <button disabled={scorePage === 1} onClick={() => setScorePage(p => p - 1)}>« Prev</button>
-                                            <span>Halaman {scorePage} dari {getTotalPages(getFilteredSortedScores())}</span>
+                                            <span style={{ display: "flex", alignItems: "center" }}>
+                                                Halaman 
+                                                <input 
+                                                    type="number" 
+                                                    value={scorePage} 
+                                                    onChange={(e) => {
+                                                        let p = parseInt(e.target.value);
+                                                        const total = getTotalPages(getFilteredSortedScores());
+                                                        if (!isNaN(p)) {
+                                                            if (p < 1) p = 1;
+                                                            if (p > total) p = total;
+                                                            setScorePage(p);
+                                                        }
+                                                    }} 
+                                                    style={{ width: "70px", margin: "0 8px", padding: "4px 8px", textAlign: "center", borderRadius: "4px", border: "2px solid #e5e7eb", appearance: "textfield" }}
+                                                    min="1"
+                                                    max={getTotalPages(getFilteredSortedScores())}
+                                                /> 
+                                                dari {getTotalPages(getFilteredSortedScores())}
+                                            </span>
                                             <button disabled={scorePage >= getTotalPages(getFilteredSortedScores())} onClick={() => setScorePage(p => p + 1)}>Next »</button>
                                         </div>
                                     )}

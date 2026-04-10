@@ -18,8 +18,9 @@ export async function GET(request) {
 
     try {
         const credentials = Buffer.from(`${EHC_DATA_USERNAME}:${EHC_DATA_PASSWORD}`).toString("base64");
+        const fetchUrl = EHC_BASE_URL.endsWith("/GetDataEHC") ? EHC_BASE_URL : `${EHC_BASE_URL}/GetDataEHC`;
 
-        const response = await fetch(`${EHC_BASE_URL}/GetDataEHC`, {
+        const response = await fetch(fetchUrl, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",

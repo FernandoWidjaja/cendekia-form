@@ -75,7 +75,7 @@ export async function getProgramSiswaByLogin(login) {
 /**
  * Add or update program siswa with batch
  */
-export async function saveProgramSiswa(login, namaProgram, batch = "") {
+export async function saveProgramSiswa(login, namaProgram, batch = "", tglMulaiPDA = "", tglSelesaiPDA = "") {
     try {
         const all = await getAllProgramSiswa();
         const loginUpper = login.toUpperCase();
@@ -84,8 +84,10 @@ export async function saveProgramSiswa(login, namaProgram, batch = "") {
         if (index >= 0) {
             all[index].namaProgram = namaProgram;
             all[index].batch = batch;
+            all[index].tglMulaiPDA = tglMulaiPDA;
+            all[index].tglSelesaiPDA = tglSelesaiPDA;
         } else {
-            all.push({ login: loginUpper, namaProgram, batch });
+            all.push({ login: loginUpper, namaProgram, batch, tglMulaiPDA, tglSelesaiPDA });
         }
 
         await redis.set(buildKey(ENTITIES.PROGRAM_SISWA), all);
@@ -148,6 +150,8 @@ export async function updateProgramSiswa(originalLogin, updates) {
         if (updates.login) all[index].login = updates.login.toUpperCase();
         if (updates.namaProgram !== undefined) all[index].namaProgram = updates.namaProgram;
         if (updates.batch !== undefined) all[index].batch = updates.batch;
+        if (updates.tglMulaiPDA !== undefined) all[index].tglMulaiPDA = updates.tglMulaiPDA;
+        if (updates.tglSelesaiPDA !== undefined) all[index].tglSelesaiPDA = updates.tglSelesaiPDA;
 
         await redis.set(buildKey(ENTITIES.PROGRAM_SISWA), all);
         return { success: true };
@@ -162,7 +166,7 @@ export async function bulkImportProgramSiswa(dataArray) {
     const imported = [];
 
     for (let i = 0; i < dataArray.length; i++) {
-        const { login, namaProgram, batch } = dataArray[i];
+        const { login, namaProgram, batch, tglMulaiPDA, tglSelesaiPDA } = dataArray[i];
         const rowNum = i + 2;
 
         if (!login || !namaProgram) {
@@ -170,9 +174,9 @@ export async function bulkImportProgramSiswa(dataArray) {
             continue;
         }
 
-        const result = await saveProgramSiswa(login, namaProgram, batch || "");
+        const result = await saveProgramSiswa(login, namaProgram, batch || "", tglMulaiPDA || "", tglSelesaiPDA || "");
         if (result.success) {
-            imported.push({ login, namaProgram, batch });
+            imported.push({ login, namaProgram, batch, tglMulaiPDA, tglSelesaiPDA });
         } else {
             errors.push({ row: rowNum, error: result.error });
         }

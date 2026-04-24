@@ -47,6 +47,8 @@ export default function AdminPage() {
     const [siswaLogin, setSiswaLogin] = useState("");
     const [siswaProgram, setSiswaProgram] = useState("");
     const [siswaBatch, setSiswaBatch] = useState("");
+    const [siswaTglMulaiPDA, setSiswaTglMulaiPDA] = useState("");
+    const [siswaTglSelesaiPDA, setSiswaTglSelesaiPDA] = useState("");
     const [searchResults, setSearchResults] = useState([]);
     const [siswaName, setSiswaName] = useState("");
     const fileInputRef = useRef(null);
@@ -980,9 +982,9 @@ export default function AdminPage() {
         const res = await fetch("/api/admin/program-siswa", {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: authHeader },
-            body: JSON.stringify({ login: siswaLogin, namaProgram: siswaProgram, batch: siswaBatch }),
+            body: JSON.stringify({ login: siswaLogin, namaProgram: siswaProgram, batch: siswaBatch, tglMulaiPDA: siswaTglMulaiPDA, tglSelesaiPDA: siswaTglSelesaiPDA }),
         });
-        if ((await res.json()).success) { setSiswaLogin(""); setSiswaName(""); setSiswaProgram(""); setSiswaBatch(""); fetchProgramSiswa(); }
+        if ((await res.json()).success) { setSiswaLogin(""); setSiswaName(""); setSiswaProgram(""); setSiswaBatch(""); setSiswaTglMulaiPDA(""); setSiswaTglSelesaiPDA(""); fetchProgramSiswa(); }
     };
 
     const deleteProgramSiswaHandler = async (login) => {
@@ -1010,6 +1012,8 @@ export default function AdminPage() {
                         login: editingSiswa.login,
                         namaProgram: editingSiswa.namaProgram,
                         batch: editingSiswa.batch,
+                        tglMulaiPDA: editingSiswa.tglMulaiPDA,
+                        tglSelesaiPDA: editingSiswa.tglSelesaiPDA,
                     },
                 }),
             });
@@ -1086,6 +1090,8 @@ export default function AdminPage() {
                             login: row.Login || row.login || "",
                             namaProgram: row.NamaProgram || row.namaProgram || row.Program || "",
                             batch: row.Batch || row.batch || "",
+                            tglMulaiPDA: row.TglMulaiPDA || row.tglMulaiPDA || "",
+                            tglSelesaiPDA: row.TglSelesaiPDA || row.tglSelesaiPDA || "",
                         };
                     });
 
@@ -1110,7 +1116,7 @@ export default function AdminPage() {
 
     const downloadTemplate = () => {
         const template = [
-            { Login: "email@example.com", NamaProgram: "HCD & LEG", Batch: "SDP 155 ODP 149" },
+            { Login: "email@example.com", NamaProgram: "HCD & LEG", Batch: "SDP 155 ODP 149", TglMulaiPDA: "YYYY-MM-DD", TglSelesaiPDA: "YYYY-MM-DD" },
         ];
         const ws = XLSX.utils.json_to_sheet(template);
         const wb = XLSX.utils.book_new();
@@ -1355,6 +1361,8 @@ export default function AdminPage() {
                             <div className={styles.formRow}>
                                 <div className={styles.formGroup}><label>Program:</label><select value={siswaProgram} onChange={(e) => setSiswaProgram(e.target.value)}><option value="">-- Pilih --</option>{programs.map((p, i) => <option key={i} value={p.namaProgram}>{p.namaProgram}</option>)}</select></div>
                                 <div className={styles.formGroup}><label>Batch:</label><input placeholder="Contoh: SDP 144" value={siswaBatch} onChange={(e) => setSiswaBatch(e.target.value)} /></div>
+                                <div className={styles.formGroup}><label>Tgl Mulai PDA:</label><input type="date" value={siswaTglMulaiPDA} onChange={(e) => setSiswaTglMulaiPDA(e.target.value)} /></div>
+                                <div className={styles.formGroup}><label>Tgl Selesai PDA:</label><input type="date" value={siswaTglSelesaiPDA} onChange={(e) => setSiswaTglSelesaiPDA(e.target.value)} /></div>
                                 <button onClick={addProgramSiswaHandler} className={styles.addBtn}>Tambah</button>
                             </div>
                             <div className={styles.formGroup}>
@@ -1414,7 +1422,7 @@ export default function AdminPage() {
                             )}
 
                             <table className={styles.table}>
-                                <thead><tr><th><input type="checkbox" checked={selectedSiswa.length === getFilteredSiswa().length && getFilteredSiswa().length > 0} onChange={(e) => setSelectedSiswa(e.target.checked ? getFilteredSiswa().map(p => p.login) : [])} /></th><th>Login</th><th>Nama Program</th><th>Batch</th><th>Aksi</th></tr></thead>
+                                <thead><tr><th><input type="checkbox" checked={selectedSiswa.length === getFilteredSiswa().length && getFilteredSiswa().length > 0} onChange={(e) => setSelectedSiswa(e.target.checked ? getFilteredSiswa().map(p => p.login) : [])} /></th><th>Login</th><th>Nama Program</th><th>Batch</th><th>Tgl Mulai PDA</th><th>Tgl Selesai PDA</th><th>Aksi</th></tr></thead>
                                 <tbody>{paginate(getFilteredSiswa(), siswaPage).map((p, i) => {
                                     const isEditing = editingSiswa && editingSiswa._originalLogin === p.login;
                                     return (
@@ -1430,6 +1438,8 @@ export default function AdminPage() {
                                                         </select>
                                                     </td>
                                                     <td><input type="text" value={editingSiswa.batch || ""} onChange={(e) => setEditingSiswa({ ...editingSiswa, batch: e.target.value })} style={{ width: "120px", padding: "4px 6px", border: "2px solid #667eea", borderRadius: "4px" }} /></td>
+                                                    <td><input type="date" value={editingSiswa.tglMulaiPDA || ""} onChange={(e) => setEditingSiswa({ ...editingSiswa, tglMulaiPDA: e.target.value })} style={{ padding: "4px 6px", border: "2px solid #667eea", borderRadius: "4px" }} /></td>
+                                                    <td><input type="date" value={editingSiswa.tglSelesaiPDA || ""} onChange={(e) => setEditingSiswa({ ...editingSiswa, tglSelesaiPDA: e.target.value })} style={{ padding: "4px 6px", border: "2px solid #667eea", borderRadius: "4px" }} /></td>
                                                     <td style={{ whiteSpace: "nowrap" }}>
                                                         <button onClick={saveEditSiswa} style={{ background: "#10b981", color: "white", border: "none", padding: "4px 10px", borderRadius: "4px", cursor: "pointer", marginRight: "4px" }}>Save</button>
                                                         <button onClick={cancelEditSiswa} style={{ background: "#6b7280", color: "white", border: "none", padding: "4px 10px", borderRadius: "4px", cursor: "pointer" }}>Cancel</button>
@@ -1440,6 +1450,8 @@ export default function AdminPage() {
                                                     <td>{p.login}</td>
                                                     <td>{p.namaProgram}</td>
                                                     <td>{p.batch || "-"}</td>
+                                                    <td>{p.tglMulaiPDA || "-"}</td>
+                                                    <td>{p.tglSelesaiPDA || "-"}</td>
                                                     <td style={{ whiteSpace: "nowrap" }}>
                                                         <button onClick={() => startEditSiswa(p)} style={{ background: "#667eea", color: "white", border: "none", padding: "4px 10px", borderRadius: "4px", cursor: "pointer", marginRight: "4px" }}>Edit</button>
                                                         <button onClick={() => deleteProgramSiswaHandler(p.login)}>Hapus</button>
@@ -2021,9 +2033,8 @@ export default function AdminPage() {
                                                     <th style={{ minWidth: "75px", textAlign: "center" }}>Diikuti</th>
                                                     <th style={{ minWidth: "80px", textAlign: "center" }}>Lulus ≥70</th>
                                                     <th style={{ minWidth: "90px", textAlign: "center" }}>Tdk Lulus</th>
-                                                    <th style={{ minWidth: "80px", textAlign: "center" }}>Blm Ikut</th>
                                                     <th style={{ minWidth: "90px", textAlign: "center" }}>% Lulus</th>
-                                                    <th style={{ minWidth: "90px", textAlign: "center" }}>% TL/TI</th>
+                                                    <th style={{ minWidth: "90px", textAlign: "center" }}>% TL</th>
                                                     <th style={{ minWidth: "90px", textAlign: "center" }}>Avg Score</th>
                                                     <th style={{ minWidth: "75px", textAlign: "center" }}>Detail</th>
                                                 </tr>
@@ -2049,7 +2060,6 @@ export default function AdminPage() {
                                                         <td style={{ textAlign: "center", fontWeight: 600, color: row.quizzesTaken > 0 ? "#3b82f6" : "#9ca3af" }}>{row.quizzesTaken}</td>
                                                         <td style={{ textAlign: "center", fontWeight: 700, color: row.quizzesPassed > 0 ? "#059669" : "#9ca3af" }}>{row.quizzesPassed}</td>
                                                         <td style={{ textAlign: "center", fontWeight: 700, color: row.quizzesFailed > 0 ? "#dc2626" : "#9ca3af" }}>{row.quizzesFailed}</td>
-                                                        <td style={{ textAlign: "center", color: row.quizzesNotTaken > 0 ? "#6b7280" : "#9ca3af" }}>{row.quizzesNotTaken}</td>
                                                         <td style={{ textAlign: "center" }}>
                                                             <span style={{ fontWeight: 700, fontSize: "0.9rem", color: row.pctLulus >= 70 ? "#059669" : row.pctLulus >= 40 ? "#d97706" : "#dc2626" }}>{row.pctLulus}%</span>
                                                         </td>
@@ -2109,7 +2119,7 @@ export default function AdminPage() {
                             </div>
                             {/* Modal Stats */}
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "12px", padding: "16px 24px", background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                                {[{label:"Total KI",val:studentDetailModal.totalQuizzes,color:"#667eea"},{label:"Diikuti",val:studentDetailModal.quizzesTaken,color:"#3b82f6"},{label:"Lulus ≥70",val:studentDetailModal.quizzesPassed,color:"#10b981"},{label:"Tidak Lulus",val:studentDetailModal.quizzesFailed,color:"#ef4444"},{label:"Belum Ikut",val:studentDetailModal.quizzesNotTaken,color:"#6b7280"},{label:"% Lulus",val:studentDetailModal.pctLulus+"%",color:"#10b981"},{label:"% TL/TI",val:studentDetailModal.pctTidakLulus+"%",color:"#ef4444"},{label:"Avg Score",val:studentDetailModal.avgScore,color:"#f59e0b"}].map((s,i) => (
+                                {[{label:"Total KI",val:studentDetailModal.totalQuizzes,color:"#667eea"},{label:"Diikuti",val:studentDetailModal.quizzesTaken,color:"#3b82f6"},{label:"Lulus ≥70",val:studentDetailModal.quizzesPassed,color:"#10b981"},{label:"Tidak Lulus",val:studentDetailModal.quizzesFailed,color:"#ef4444"},{label:"% Lulus",val:studentDetailModal.pctLulus+"%",color:"#10b981"},{label:"% TL",val:studentDetailModal.pctTidakLulus+"%",color:"#ef4444"},{label:"Avg Score",val:studentDetailModal.avgScore,color:"#f59e0b"}].map((s,i) => (
                                     <div key={i} style={{ textAlign: "center", padding: "10px", background: "white", borderRadius: "8px", border: `2px solid ${s.color}22` }}>
                                         <div style={{ fontSize: "1.4rem", fontWeight: 700, color: s.color }}>{s.val}</div>
                                         <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: "2px" }}>{s.label}</div>
@@ -2120,8 +2130,8 @@ export default function AdminPage() {
                             <div style={{ padding: "16px 24px" }}>
                                 <h3 style={{ marginBottom: "12px", color: "#374151" }}>Detail Lulus KI</h3>
                             
-                            {["Tahun 1", "Tahun 2", "Tahun 3", "Belum Ikut"].map(yrGroup => {
-                                const lessonsInGroup = studentDetailModal.quizDetails?.filter(q => q.takenYear === yrGroup || (!q.takenYear && yrGroup === "Belum Ikut")) || [];
+                            {["Tahun 1", "Tahun 2", "Tahun 3", "N/A"].map(yrGroup => {
+                                const lessonsInGroup = studentDetailModal.quizDetails?.filter(q => q.takenYear === yrGroup || (!q.takenYear && yrGroup === "N/A")) || [];
                                 if (lessonsInGroup.length === 0) return null;
                                 
                                 const scores = lessonsInGroup.filter(q => q.score !== null).map(q => q.score);
@@ -2130,7 +2140,7 @@ export default function AdminPage() {
                                 return (
                                     <div key={yrGroup} style={{ marginBottom: "20px", border: "1px solid #e5e7eb", borderRadius: "8px", overflow: "hidden" }}>
                                         <div style={{ background: "#f3f4f6", padding: "10px 16px", fontWeight: "bold", color: "#374151", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between" }}>
-                                            <span>Group: {yrGroup === "Belum Ikut" ? "Belum Diikuti" : yrGroup} ({lessonsInGroup.length} Lesson)</span>
+                                            <span>Group: {yrGroup === "N/A" ? "N/A (Belum/Tidak Terdaftar)" : yrGroup} ({lessonsInGroup.length} Lesson)</span>
                                             {groupAvg !== null && <span style={{ color: "#059669", background: "#d1fae5", padding: "2px 8px", borderRadius: "12px", fontSize: "0.8rem" }}>Avg Score: {groupAvg}</span>}
                                         </div>
                                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>

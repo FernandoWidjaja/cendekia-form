@@ -36,9 +36,8 @@ export async function GET(request) {
             "Diikuti": row.quizzesTaken,
             "Lulus (≥70)": row.quizzesPassed,
             "Tidak Lulus (<70)": row.quizzesFailed,
-            "Belum Ikut": row.quizzesNotTaken,
             "% Lulus": row.pctLulus,
-            "% Tidak Lulus/TI": row.pctTidakLulus,
+            "% Tidak Lulus": row.pctTidakLulus,
             "Avg Score": row.avgScore,
         }));
 
@@ -46,7 +45,7 @@ export async function GET(request) {
         ws1["!cols"] = [
             { wch: 5 },  { wch: 30 }, { wch: 35 }, { wch: 20 }, { wch: 15 },
             { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 },
-            { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
+            { wch: 14 }, { wch: 18 }, { wch: 10 }, { wch: 18 }, { wch: 12 },
         ];
 
         // ── SHEET 2: DETAIL PER LESSON ──────────────────────────────────────

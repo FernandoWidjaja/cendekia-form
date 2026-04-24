@@ -134,6 +134,11 @@ export async function getCurriculumMonitoringData(filters = {}) {
             }
         }
 
+        let pdaStartObj = null;
+        let pdaEndObj = null;
+        if (siswa.tglMulaiPDA) pdaStartObj = new Date(siswa.tglMulaiPDA);
+        if (siswa.tglSelesaiPDA) pdaEndObj = new Date(siswa.tglSelesaiPDA);
+
         let totalScore = 0;
         let quizzesTaken = 0;
         let quizzesPassed = 0;
@@ -160,7 +165,12 @@ export async function getCurriculumMonitoringData(filters = {}) {
                 if (kiDateObj < startDateObj) return; // SKIP this KI
             }
             
-            let takenYear = "Belum Ikut";
+            // Exclude KI if student was in PDA and didn't take this KI
+            if (!entry && pdaStartObj && pdaEndObj && kiDateObj && !isNaN(pdaStartObj.getTime()) && !isNaN(pdaEndObj.getTime()) && !isNaN(kiDateObj.getTime())) {
+                if (kiDateObj >= pdaStartObj && kiDateObj <= pdaEndObj) return; // SKIP this KI
+            }
+            
+            let takenYear = "N/A";
             if (startDateObj && kiDateObj && !isNaN(startDateObj.getTime()) && !isNaN(kiDateObj.getTime())) {
                 const diffDays = Math.floor((kiDateObj - startDateObj) / (1000 * 60 * 60 * 24));
                 if (diffDays <= 365) takenYear = "Tahun 1";
@@ -184,15 +194,16 @@ export async function getCurriculumMonitoringData(filters = {}) {
                     takenYear
                 });
             } else {
-                quizDetails.push({ lesson, date, score: null, status: "BELUM IKUT", takenYear });
+                quizzesFailed++;
+                quizDetails.push({ lesson, date, score: 0, status: "TIDAK LULUS", takenYear });
             }
         });
 
         const activeTotalKI = quizDetails.length;
-        const quizzesNotTaken = activeTotalKI - quizzesTaken;
-        const avgScore = quizzesTaken > 0 ? Math.round((totalScore / quizzesTaken) * 10) / 10 : 0;
+        const quizzesNotTaken = 0;
+        const avgScore = activeTotalKI > 0 ? Math.round((totalScore / activeTotalKI) * 10) / 10 : 0;
         const pctLulus = activeTotalKI > 0 ? Math.round((quizzesPassed / activeTotalKI) * 100) : 0;
-        const pctTidakLulus = activeTotalKI > 0 ? Math.round(((quizzesFailed + quizzesNotTaken) / activeTotalKI) * 100) : 0;
+        const pctTidakLulus = activeTotalKI > 0 ? Math.round((quizzesFailed / activeTotalKI) * 100) : 0;
         const completionPct = activeTotalKI > 0 ? Math.round((quizzesTaken / activeTotalKI) * 100) : 0;
 
         // Format tanggal masuk

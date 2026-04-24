@@ -62,12 +62,12 @@ export async function POST(request) {
     }
 
     // Single add
-    const { login, namaProgram, batch } = body;
+    const { login, namaProgram, batch, tglMulaiPDA, tglSelesaiPDA } = body;
     if (!login || !namaProgram) {
         return NextResponse.json({ error: "login dan namaProgram wajib diisi" }, { status: 400 });
     }
 
-    const result = await saveProgramSiswa(login, namaProgram, batch || "");
+    const result = await saveProgramSiswa(login, namaProgram, batch || "", tglMulaiPDA || "", tglSelesaiPDA || "");
     return NextResponse.json(result);
 }
 

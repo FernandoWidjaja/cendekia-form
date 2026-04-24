@@ -34,7 +34,7 @@ export default function AdminPage() {
     // New: Custom quiz name and target companies
     const [useCustomName, setUseCustomName] = useState(false);
     const [customQuizName, setCustomQuizName] = useState("");
-    const [targetCompanies, setTargetCompanies] = useState(["ASM", "SISWA", "SRNM", "SASI", "MITRA"]); // Default all
+    const [targetCompanies, setTargetCompanies] = useState(["ASM", "SISWA", "SRNM", "SASI", "MITRA", "SWPD", "SSSS"]); // Default all
 
     // Master Program state
     const [programs, setPrograms] = useState([]);
